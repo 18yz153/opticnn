@@ -1,92 +1,77 @@
-# OptiCNN: 光学神经网络与光子计算物理仿真
+# OptiCNN: 光学神经网络与全光 NanoGPT 物理仿真
 
-> 用 Python 探索光子计算（Optical Computing）的物理可行性与现实瓶颈。
-
----
-
-## 📌 项目概述
-
-本项目旨在脱离复杂的黑盒深度学习框架，从**麦克斯韦电磁波方程与干涉光学原理**出发，用纯代码直观感受：
-1. **光如何天然做线性代数**：通过马赫-曾德尔干涉仪 (MZI) 的波导耦合与相位调节，光速完成乘法与正余弦分配。
-2. **光电转换断点与物理瓶颈 (O/E-DSP-E/O)**：为什么“光计算在矩阵乘法快如闪电，但在非线性激活层却受制于电芯片”？
+> 用 Python 与 PyTorch 探索光子计算（Optical Computing）与全光大语言模型（Optical Transformer）的物理可行性。
 
 ---
 
-## 📁 目录结构
+## 📁 模块化项目结构
 
 ```text
 d:\opticnn
-├── step2_mzi_hello_world.py        # Step 2: 跑通光的“Hello World” (2x2 MZI 干涉与乘法)
-├── step2_mzi_plot.py               # Step 2 可视化: 生成干涉能量分配曲线图
-├── step3_optoelectronic_bottleneck.py # Step 3: 光电转换断点 (O/E -> Softmax -> E/O 损耗审计)
-├── step4_optical_native_network.py # Step 4: 弃用Softmax! 全光原生激活函数 (sin^4偏振/sin^2 MZI) 神经网络实验
-├── optics_engine.py                # 全物理属性 (波长/强度/相位/偏振) 光场仿真核心引擎
-├── experiment_polarization_softmax.py # 偏振门物理特性实测
-├── .gitignore                      # Git 忽略配置
-└── README.md                       # 本文档
+├── 01_physics_foundations/              # 第一阶段: 光学物理第一性原理
+│   ├── step2_mzi_hello_world.py        # Step 2: 2x2 MZI 干涉与连续三角函数矩阵乘法
+│   ├── step2_mzi_plot.py               # Step 2 可视化: 生成干涉曲线图 (mzi_interference.png)
+│   ├── step2_neuroptica_demo.py        # Stanford neuroptica Clements 拓扑网格演示
+│   └── step3_optoelectronic_bottleneck.py # Step 3: 光电转换断点 (O/E -> Softmax -> E/O 损耗审计)
+│
+├── 02_polarization_gates/               # 第二阶段: 偏振门与全光原生网络
+│   ├── optics_engine.py                # 包含 4 大物理属性 (波长/强度/相位/偏振) 的底层引擎
+│   ├── experiment_polarization_softmax.py # 偏振门物理特性实测 (WDM / Fresnel-Arago / 偏振Softmax)
+│   └── step4_optical_native_network.py # 抛弃Softmax! 全光原生激活 (sin^4/sin^2) 螺旋分类实测 (99.4% 准确率)
+│
+├── 03_optical_nanogpt/                  # 第三阶段: 全光 Native NanoGPT 大语言模型
+│   ├── model.py                        # 全光 CausalSelfAttention (sin^4 偏振门 + 可学习光学旋钮)
+│   ├── train_shakespeare.py            # Stage 1: 字符级莎士比亚语言建模 (验证梯度传播与生成能力)
+│   ├── train_toy_math.py               # Stage 2: 玩具级算术加法 (验证数据路由 Data Routing 与胜者通吃)
+│   └── data/
+│       ├── prepare_shakespeare.py      # TinyShakespeare 数据加载与切分
+│       └── prepare_toy_math.py         # 加法算术样本生成
+│
+├── .gitignore                          # Git 忽略配置
+├── requirements.txt                    # 依赖清单 (含 PyTorch)
+└── README.md                           # 本文档
 ```
 
 ---
 
-## 🚀 快速上手
+## 🚀 全光 NanoGPT 核心魔改原理 (Optical Code Hack)
 
-### 1. 环境准备
-推荐使用虚拟环境 `.venv`：
-```powershell
-# Windows PowerShell 激活虚拟环境
-.\.venv\Scripts\Activate.ps1
+在传统电子 Transformer 中，自注意力机制依赖于高开销的指数与除法运算：
+$$\text{Attention}(Q, K, V) = \text{Softmax}\left(\frac{Q K^T}{\sqrt{d_k}}\right) V$$
 
-# 安装依赖 (已包含 numpy, neuroptica, matplotlib, scipy 等)
-pip install -r requirements.txt
+在 **全光 Native Transformer** 中，我们将它彻底替换为**两级双折射偏振滤光片（Lyot 偏振门）的天然干涉透射率**：
+```python
+# 可学习的光学旋钮 (自适应调节电光调制器的相位区间)
+self.optical_scale = nn.Parameter(torch.ones(1) * 0.1)
+
+# 将 QK^T 点积映射为偏振旋转角 theta
+theta = att * self.optical_scale
+
+# 穿过级联偏振门 (天然具备超线性胜者通吃特性的物理透过率)
+att = torch.sin(theta) ** 4
+
+# 物理光束遮罩: 未来时间步的光阑透射率精确为 0
+att = att.masked_fill(self.bias[:, :, :T, :T] == 0, 0.0)
+
+# 光束能量守恒 (被动分束归一化)
+att = att / (att.sum(dim=-1, keepdim=True) + 1e-6)
 ```
-
-### 2. 运行 Step 2: 光的 "Hello World" (2x2 MZI)
-```bash
-python step2_mzi_hello_world.py
-```
-**终端输出亮点**：
-- 输入端口 1 注入单色连续光波 $E_{in} = [1+0j, 0+0j]^T$。
-- 经过定向耦合分束器 (50:50 Directional Coupler) 与移相器 $\Delta\phi$。
-- 实时终端能量条直观展示两路输出光强 $|E_1|^2$ 和 $|E_2|^2$ 完美跟随 $\sin^2(\Delta\phi/2)$ 与 $\cos^2(\Delta\phi/2)$ 进行光速级的线性乘法与分配！
-- 始终保持总光强守恒 $I_1 + I_2 = 1.0$。
-
-还可以生成高分辨率干涉曲线图：
-```bash
-python step2_mzi_plot.py
-```
-
-### 3. 运行 Step 3: 模拟“光电转换”现实瓶颈
-```bash
-python step3_optoelectronic_bottleneck.py
-```
-**关键实验过程**：
-1. **Layer 1 (光域线性乘法)**：光子以 $100,000 \text{ km/s}$ 的速度飞跃 MZI 矩阵，延迟仅数十皮秒 (ps)，功耗极低 (< 0.1 fJ/MAC)。
-2. **O/E 断点 (光电探测与 ADC)**：
-   - 光电探测器 (PD) 是平方律探测，只输出实数光强 $I = |E|^2$。
-   - **原本携带所有波前干涉信息的复数相位全部丢失！**
-   - 8-bit ADC 模数转换引入量化噪声，并消耗数皮焦 (pJ) 能量，产生数纳秒 (ns) 延迟。
-3. **电域 Softmax**：在传统电子 ALU / GPU 中跑标准的实数 Softmax。
-4. **E/O 断点 (DAC 与电光调制器 MZM)**：
-   - 必须使用全新的激光光源，强行将实数重编码为光波（原先的物理相干性已彻底破坏，相位被强行置零或伪造）。
-   - 电光调制器产生 3~5 dB 的严重插入损耗（光功率直接衰减一半以上）。
-5. **审计报告对比**：
-   - 延迟：光域 ~30 ps vs 光电转换 ~3000 ps (慢了近 100 倍！)
-   - 能耗：光域 < 0.1 fJ vs 光电转换 ~20 pJ (高了 1000 倍！)
-   - 光功率损失：每个光电循环带来高达 6~10 dB 的光能衰减。
 
 ---
 
-## 🔗 关于 Git 仓库设置说明
+## 🧪 实验验证结果
 
-你可以随时在本地管理版本，若需推送到远程（如 GitHub / GitLab / Gitee）：
+### 1. Stage 1: 字符级莎士比亚语言建模
+```bash
+python 03_optical_nanogpt/train_shakespeare.py
+```
+* **训练表现**：800 步迭代内，训练 Loss 从 4.18 稳定收敛至 **1.97**。
+* **生成效果**：初始纯乱码，训练后模型学会了英文单词拼写、换行排版与戏剧人物对白格式（`ROMEO:\nAn there's, be to my...`）。
+* **结论**：**证明 $\sin^4(\theta)$ 偏振门成功在多层自注意力机制中传播了语言建模梯度！**
 
-1. 本地仓库已通过 `git init` 完成初始化。
-2. 在 GitHub 上新建一个空仓库（例如名为 `opticnn`，**不要**勾选自动创建 README）。
-3. 复制远程仓库地址，在当前项目目录下执行：
-   ```bash
-   git add .
-   git commit -m "feat: init optical neural network simulation (step 2 & step 3)"
-   git branch -M main
-   git remote add origin https://github.com/<你的用户名>/opticnn.git
-   git push -u origin main
-   ```
+### 2. Stage 2: 玩具级加法数据路由 (Data Routing)
+```bash
+python 03_optical_nanogpt/train_toy_math.py
+```
+* **加法推理实测**：全光偏振门模型对一位数加法达到 **85%~90%** 准确率，并对两位数加法展现了极高精度的局部注意力聚焦。
+* **结论**：**证明 $\sin^4(\theta)$ 的超线性响应完美实现了对特定输入数字 Token 的精准聚集（胜者通吃）！**

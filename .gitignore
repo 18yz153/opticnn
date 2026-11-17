@@ -36,4 +36,7 @@ ENV/
 *.png
 *.jpg
 *.svg
+*.pt
+*.pth
+*.bin
 logs/
