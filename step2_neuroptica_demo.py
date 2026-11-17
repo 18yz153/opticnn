@@ -6,6 +6,8 @@ neuroptica (由 Stanford 团队开发) 是专门用于光子神经网络 (ONN) �
 """
 
 import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 
 try:
     import numpy as np

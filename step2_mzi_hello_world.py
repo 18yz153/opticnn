@@ -8,6 +8,9 @@ Step 2: 跑通光的 "Hello World" —— 2x2 Mach-Zehnder 干涉仪 (MZI)
 4. 验证能量守恒 (酉矩阵保范性 |E_out|^2 = |E_in|^2)。
 """
 
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 import numpy as np
 
 def beam_splitter_50_50():

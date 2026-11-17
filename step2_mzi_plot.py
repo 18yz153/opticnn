@@ -4,6 +4,9 @@ Step 2 扩展: 绘制 MZI 干涉与能量分配曲线 (保存为 mzi_interferenc
 本脚本将 2x2 MZI 的干涉光强与理论三角函数分布绘制成精美图表。
 """
 
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 import numpy as np
 import matplotlib.pyplot as plt
 

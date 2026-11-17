@@ -17,6 +17,9 @@ Step 3: 光电转换断点 —— 模拟现实中光学计算的“光电瓶颈�
   3. 能耗与延迟的倒挂 (Energy & Latency Disparity)
 """
 
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 import numpy as np
 
 def generate_random_unitary(n=4, seed=42):
