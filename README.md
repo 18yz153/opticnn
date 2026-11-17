@@ -19,7 +19,9 @@ d:\opticnn
 ├── step2_mzi_hello_world.py        # Step 2: 跑通光的“Hello World” (2x2 MZI 干涉与乘法)
 ├── step2_mzi_plot.py               # Step 2 可视化: 生成干涉能量分配曲线图
 ├── step3_optoelectronic_bottleneck.py # Step 3: 光电转换断点 (O/E -> Softmax -> E/O 损耗审计)
-├── step2_neuroptica_demo.py        # (可选) 使用 Stanford neuroptica 库的 Clements 拓扑演示
+├── step4_optical_native_network.py # Step 4: 弃用Softmax! 全光原生激活函数 (sin^4偏振/sin^2 MZI) 神经网络实验
+├── optics_engine.py                # 全物理属性 (波长/强度/相位/偏振) 光场仿真核心引擎
+├── experiment_polarization_softmax.py # 偏振门物理特性实测
 ├── .gitignore                      # Git 忽略配置
 └── README.md                       # 本文档
 ```
