@@ -29,8 +29,13 @@ d:\opticnn
 ## 🚀 快速上手
 
 ### 1. 环境准备
-```bash
-pip install numpy neuroptica matplotlib
+推荐使用虚拟环境 `.venv`：
+```powershell
+# Windows PowerShell 激活虚拟环境
+.\.venv\Scripts\Activate.ps1
+
+# 安装依赖 (已包含 numpy, neuroptica, matplotlib, scipy 等)
+pip install -r requirements.txt
 ```
 
 ### 2. 运行 Step 2: 光的 "Hello World" (2x2 MZI)
