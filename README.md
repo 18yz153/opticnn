@@ -71,10 +71,11 @@ d:\opticnn
 ### 1. Stage 1: 字符级莎士比亚语言建模 (TinyShakespeare)
 ```bash
 # 纯光学模式 (关闭 LayerNorm，关闭除法归一化，全光偏振 MLP)
-python 03_optical_nanogpt/train_shakespeare.py --pure-optical --iters 800 --device cuda
+# 支持耐性早停 (--patience 4) 与目标损失停机 (--target-loss 2.5)
+python 03_optical_nanogpt/train_shakespeare.py --pure-optical --iters 1000 --eval-interval 100 --patience 4 --device cuda
 
 # 或电子辅助归一化模式 (带 LayerNorm 与光束归一化)
-python 03_optical_nanogpt/train_shakespeare.py --with-layernorm --iters 800 --device cuda
+python 03_optical_nanogpt/train_shakespeare.py --with-layernorm --iters 1000 --device cuda
 ```
 * **实验表现**：纯光学模式下仅用 9.8 秒即完成 800 步训练，Loss 迅速从 4.18 下降至 2.51。
 * **生成效果**：初始纯乱码，训练后模型学会了英文单词拼写、空格断句、双换行排版与莎士比亚戏剧人物台词格式（`ROMEO:\nTh t t wrd is s ble winouthar thine...`）。
@@ -83,7 +84,8 @@ python 03_optical_nanogpt/train_shakespeare.py --with-layernorm --iters 800 --de
 ### 2. Stage 2: 玩具级算术加法数据路由 (Toy Math Addition)
 ```bash
 # 带光功率自适应控制 (AGC / 光分束归一化) 模式: 验证精准数据路由与胜者通吃
-python 03_optical_nanogpt/train_toy_math.py --iters 1200 --device cuda
+# 支持目标准确率停机 (--target-acc 85.0) 与耐性早停 (--patience 4)
+python 03_optical_nanogpt/train_toy_math.py --iters 1500 --eval-interval 150 --patience 4 --target-acc 85.0 --device cuda
 
 # 纯被动衰减模式 (无增益放大器，展示多级无源级联的功率衰减物理挑战)
 python 03_optical_nanogpt/train_toy_math.py --pure-optical --iters 1200 --device cuda
@@ -92,3 +94,17 @@ python 03_optical_nanogpt/train_toy_math.py --pure-optical --iters 1200 --device
   * **在光功率自适应控制 (AGC) 模式下**：仅 14 秒即完成 1200 步训练，测试集加法准确率达到 **66%~85%**！`7+7=14`、`2+5=07`、`16+22=038` 全部 100% 精准算对。
   * **在纯被动级联模式下**：因多级无源器件 $\sin^4(u)$ 导数在零点附近为 $O(u^3)$，出现光衰减与梯度弥散，指明了在真实光学芯片工程中引入**半导体光放大器 (SOA, Semiconductor Optical Amplifier)** 的必要性。
 * **物理结论**：**证明 $\sin^4(\theta)$ 的超线性响应完美实现了对目标数字 Token 的高保真数据路由（胜者通吃）！**
+
+---
+
+## 🛑 三重智能停止机制 (Three-Tier Stopping Criteria)
+
+为杜绝死循环空跑与后期过拟合，代码实现了标准的工业级三层联合停机策略：
+1. **Target Stop (目标达成即停)**：
+   * **加法任务**：当实时测试集推理准确率 $\ge \text{target\_acc}$（如 85% 或 95%）时，证明注意力路由已学通，立即提前终止！
+   * **语言建模**：当验证集损失 $\le \text{target\_loss}$ 时，提前达成目标收工。
+2. **Patience Early Stop (耐性早停防过拟合)**：
+   * 监控验证集 Loss。如果连续 `patience` 次评估没有出现显著改善（改善幅度小于 `min_delta`），自动刹车并中断训练。
+   * **自动回滚最佳权重**：无论在第几步触发早停，系统都会自动恢复历史最优 Checkpoint，确保测试和生成的永远是模型巅峰状态。
+3. **Max Iterations (硬截断兜底)**：
+   * 设置最大步数限制（如 1000 步或 1500 步），防止无限制等待。

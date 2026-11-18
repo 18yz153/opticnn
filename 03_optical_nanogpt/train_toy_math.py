@@ -23,12 +23,42 @@ import torch.nn as nn
 from model import OpticalNanoGPT, GPTConfig, audit_optical_pipeline
 from data.prepare_toy_math import generate_math_dataset, FILE_PATH
 
-def train_toy_math(attn_type='optical', pure_optical=False, max_iters=1200, device='cuda' if torch.cuda.is_available() else 'cpu'):
+def quick_evaluate_math(model, device, encode, decode, num_questions=25):
+    """快速评测加法推理准确率，用于训练中期的目标达标与早停判定"""
+    model.eval()
+    correct = 0
+    rng = random.Random(777)
+    with torch.no_grad():
+        for i in range(num_questions):
+            if i % 3 == 0:
+                a = rng.randint(10, 45)
+                b = rng.randint(10, 45)
+                expected = f"{a+b:03d}"
+                n_tokens = 3
+            else:
+                a = rng.randint(0, 9)
+                b = rng.randint(0, 9)
+                expected = f"{a+b:02d}"
+                n_tokens = 2
+            prompt = f"{a}+{b}="
+            ctx = torch.tensor([encode(prompt)], dtype=torch.long, device=device)
+            out = model.generate(ctx, max_new_tokens=n_tokens, temperature=0.01)
+            pred = decode(out[0].tolist())[len(prompt):len(prompt)+n_tokens]
+            if pred == expected:
+                correct += 1
+    model.train()
+    return correct / num_questions * 100.0
+
+def train_toy_math(attn_type='optical', pure_optical=False, max_iters=1500,
+                   eval_interval=150, patience=4, min_delta=0.005,
+                   target_acc=90.0, target_loss=None,
+                   device='cuda' if torch.cuda.is_available() else 'cpu'):
     print("=" * 80)
     print(f"   🧮 Stage 2: 玩具级加法数据路由实测 (Attention: {attn_type.upper()}) 🧮")
     print(f"   硬件加速设备: {device.upper()} (GPU 极速训练)")
     if device == 'cuda':
         print(f"   GPU 型号: {torch.cuda.get_device_name(0)}")
+    print(f"   停机策略: MaxIters={max_iters} | Patience={patience} | MinDelta={min_delta} | TargetAcc={target_acc}%")
     print("=" * 80)
 
     # 1. 准备数据: 支持一位数加法 (例如 7+8=15\n) 与 两位数加法
@@ -94,8 +124,15 @@ def train_toy_math(attn_type='optical', pure_optical=False, max_iters=1200, devi
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-3, weight_decay=1e-3)
 
-    # 3. 训练循环
+    # 3. 智能训练循环 (Max Iters + Target Stop + Patience Early Stop)
     t0 = time.time()
+    best_val_loss = float('inf')
+    best_acc = 0.0
+    best_step = 0
+    patience_counter = 0
+    best_state = None
+    stop_reason = "达到最大迭代步数 (Max Iters Reached)"
+
     for iter_step in range(1, max_iters + 1):
         xb, yb = get_batch(train_data)
         logits, loss = model(xb, yb)
@@ -103,20 +140,70 @@ def train_toy_math(attn_type='optical', pure_optical=False, max_iters=1200, devi
         loss.backward()
         optimizer.step()
 
-        if iter_step % 300 == 0 or iter_step == max_iters:
+        if iter_step % eval_interval == 0 or iter_step == max_iters:
             model.eval()
             with torch.no_grad():
                 xt, yt = get_batch(test_data)
                 _, val_loss = model(xt, yt)
             model.train()
             
+            val_loss_val = val_loss.item()
             t_elapsed = time.time() - t0
-            scale_info = f" | 光学旋钮 Scale: {model.transformer.h[0].attn.optical_scale.item():.4f}" if attn_type == 'optical' else ""
-            print(f"Step {iter_step:4d}/{max_iters} | 训练 Loss: {loss.item():.4f} | 测试 Loss: {val_loss.item():.4f} | 耗时: {t_elapsed:.1f}s{scale_info}")
 
-    # 4. 精准算术测试 (50 道随机加法题)
+            # 评估当前算术推理准确率 (25 道快速测试题)
+            cur_acc = quick_evaluate_math(model, device, encode, decode, num_questions=25)
+            scale_info = f" | 光学旋钮 Scale: {model.transformer.h[0].attn.optical_scale.item():.4f}" if attn_type == 'optical' else ""
+
+            # 1. 检查 Target Accuracy Stop (目标准确率达标即停)
+            if target_acc is not None and cur_acc >= target_acc:
+                best_acc = cur_acc
+                best_val_loss = val_loss_val
+                best_step = iter_step
+                best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+                stop_reason = f"🎯 Target Stop: 算术准确率达到 {cur_acc:.1f}% >= 目标 {target_acc:.1f}%！提前圆满达成！"
+                print(f"Step {iter_step:4d}/{max_iters} | 训练 Loss: {loss.item():.4f} | 测试 Loss: {val_loss_val:.4f} | 准确率: {cur_acc:.1f}% | 耗时: {t_elapsed:.1f}s | 🎯 达到目标准确率！")
+                break
+
+            # 2. 检查 Target Loss Stop
+            if target_loss is not None and val_loss_val <= target_loss:
+                best_val_loss = val_loss_val
+                best_step = iter_step
+                best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+                stop_reason = f"🎯 Target Loss Stop: 验证损失达到 {val_loss_val:.4f} <= 目标 {target_loss:.4f}"
+                print(f"Step {iter_step:4d}/{max_iters} | 训练 Loss: {loss.item():.4f} | 测试 Loss: {val_loss_val:.4f} | 准确率: {cur_acc:.1f}% | 耗时: {t_elapsed:.1f}s | 🎯 达到目标损失！")
+                break
+
+            # 3. 检查 Patience Early Stop
+            if val_loss_val < best_val_loss - min_delta or cur_acc > best_acc:
+                if val_loss_val < best_val_loss - min_delta:
+                    best_val_loss = val_loss_val
+                if cur_acc > best_acc:
+                    best_acc = cur_acc
+                best_step = iter_step
+                best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+                patience_counter = 0
+                status_str = f"⭐ 刷新最优 (Loss: {best_val_loss:.4f}, Acc: {best_acc:.1f}%)"
+            else:
+                patience_counter += 1
+                status_str = f"⏳ 耐心等待 ({patience_counter}/{patience})"
+
+            print(f"Step {iter_step:4d}/{max_iters} | 训练 Loss: {loss.item():.4f} | 测试 Loss: {val_loss_val:.4f} | 准确率: {cur_acc:.1f}% | 耗时: {t_elapsed:.1f}s | {status_str}{scale_info}")
+
+            if patience_counter >= patience:
+                stop_reason = f"🛑 Patience Early Stop: 连续 {patience} 次评估未见提升 (历史最佳: Loss={best_val_loss:.4f}, Acc={best_acc:.1f}% @ Step {best_step})"
+                print(f"\n{stop_reason} -> 自动刹车保护，防止过拟合/空跑！")
+                break
+
+    print(f"\n[训练终止状态]: {stop_reason}")
+
+    # 恢复最优权重
+    if best_state is not None:
+        model.load_state_dict({k: v.to(device) for k, v in best_state.items()})
+        print(f"✨ 已自动加载 Step {best_step} 的历史最佳模型权重！")
+
+    # 4. 精准算术测试 (50 道未见随机加法题)
     print("\n" + "=" * 80)
-    print("【测试集精准算术加法推理评估 (50 道随机测试题)】:")
+    print("【测试集精准算术加法推理评估 (50 道随机测试题 - 最佳权重实测)】:")
     print("=" * 80)
 
     model.eval()
@@ -170,7 +257,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Stage 2: Toy Math Addition Optical NanoGPT")
     parser.add_argument("--attn-type", type=str, default="optical", choices=["optical", "softmax"], help="Attention type")
     parser.add_argument("--pure-optical", action="store_true", default=False, help="Use pure optical mode (passive 1/sqrt(T), sin^4 MLP, no LayerNorm)")
-    parser.add_argument("--iters", type=int, default=1200, help="Training iterations")
+    parser.add_argument("--iters", type=int, default=1500, help="Max training iterations")
+    parser.add_argument("--eval-interval", type=int, default=150, help="Evaluation interval")
+    parser.add_argument("--patience", type=int, default=4, help="Patience (number of evals without improvement)")
+    parser.add_argument("--min-delta", type=float, default=0.005, help="Minimum delta improvement")
+    parser.add_argument("--target-acc", type=float, default=85.0, help="Target test accuracy to stop early (e.g. 85.0 or 95.0)")
+    parser.add_argument("--target-loss", type=float, default=None, help="Target validation loss to stop early")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Device (cuda or cpu)")
     args = parser.parse_args()
 
@@ -178,5 +270,10 @@ if __name__ == "__main__":
         attn_type=args.attn_type,
         pure_optical=args.pure_optical,
         max_iters=args.iters,
+        eval_interval=args.eval_interval,
+        patience=args.patience,
+        min_delta=args.min_delta,
+        target_acc=args.target_acc,
+        target_loss=args.target_loss,
         device=args.device
     )

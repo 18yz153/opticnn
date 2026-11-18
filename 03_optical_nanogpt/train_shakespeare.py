@@ -19,12 +19,15 @@ import torch
 from model import OpticalNanoGPT, GPTConfig, audit_optical_pipeline
 from data.prepare_shakespeare import download_data, FILE_PATH
 
-def train_shakespeare(attn_type='optical', pure_optical=False, max_iters=1000, device='cuda' if torch.cuda.is_available() else 'cpu'):
+def train_shakespeare(attn_type='optical', pure_optical=False, max_iters=1000, 
+                      eval_interval=100, patience=4, min_delta=0.005, target_loss=None,
+                      device='cuda' if torch.cuda.is_available() else 'cpu'):
     print("=" * 80)
     print(f"   🎭 Stage 1: 字符级莎士比亚全光 NanoGPT 训练 (Attention: {attn_type.upper()}) 🎭")
     print(f"   硬件加速设备: {device.upper()} (GPU 极速训练)")
     if device == 'cuda':
         print(f"   GPU 型号: {torch.cuda.get_device_name(0)}")
+    print(f"   停机策略: MaxIters={max_iters} | Patience={patience} | MinDelta={min_delta} | TargetLoss={target_loss}")
     print("=" * 80)
 
     # 1. 确保数据就绪
@@ -87,8 +90,14 @@ def train_shakespeare(attn_type='optical', pure_optical=False, max_iters=1000, d
     print(raw_gen)
     print("─" * 80 + "\n")
 
-    # 4. 训练循环
+    # 4. 智能训练循环 (Max Iters + Patience Early Stop + Target Stop)
     t0 = time.time()
+    best_val_loss = float('inf')
+    best_step = 0
+    patience_counter = 0
+    best_state = None
+    stop_reason = "达到最大迭代步数 (Max Iters Reached)"
+
     for iter_step in range(1, max_iters + 1):
         xb, yb = get_batch('train')
         logits, loss = model(xb, yb)
@@ -96,13 +105,16 @@ def train_shakespeare(attn_type='optical', pure_optical=False, max_iters=1000, d
         loss.backward()
         optimizer.step()
 
-        if iter_step % 200 == 0 or iter_step == max_iters:
+        if iter_step % eval_interval == 0 or iter_step == max_iters:
             model.eval()
             with torch.no_grad():
                 xv, yv = get_batch('val')
                 _, val_loss = model(xv, yv)
             model.train()
             
+            val_loss_val = val_loss.item()
+            t_elapsed = time.time() - t0
+
             # 读取当前光学旋钮 (optical scale) 的自适应状态
             if attn_type == 'optical':
                 scales = [b.attn.optical_scale.item() for b in model.transformer.h]
@@ -110,12 +122,43 @@ def train_shakespeare(attn_type='optical', pure_optical=False, max_iters=1000, d
             else:
                 scale_str = ""
 
-            t_elapsed = time.time() - t0
-            print(f"Step {iter_step:4d}/{max_iters} | 训练损失: {loss.item():.4f} | 验证损失: {val_loss.item():.4f} | 耗时: {t_elapsed:.1f}s{scale_str}")
+            # 1. 检查 Target Stop
+            if target_loss is not None and val_loss_val <= target_loss:
+                best_val_loss = val_loss_val
+                best_step = iter_step
+                best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+                stop_reason = f"🎯 Target Stop: 验证损失达到目标 {target_loss:.4f} (当前 {val_loss_val:.4f})"
+                print(f"Step {iter_step:4d}/{max_iters} | 训练: {loss.item():.4f} | 验证: {val_loss_val:.4f} | 耗时: {t_elapsed:.1f}s | 🎯 达到目标损失！")
+                break
+
+            # 2. 检查 Patience Early Stop
+            if val_loss_val < best_val_loss - min_delta:
+                best_val_loss = val_loss_val
+                best_step = iter_step
+                best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+                patience_counter = 0
+                status_str = f"⭐ 刷新最佳验证损失: {best_val_loss:.4f}"
+            else:
+                patience_counter += 1
+                status_str = f"⏳ 耐心等待 ({patience_counter}/{patience})"
+
+            print(f"Step {iter_step:4d}/{max_iters} | 训练: {loss.item():.4f} | 验证: {val_loss_val:.4f} | 耗时: {t_elapsed:.1f}s | {status_str}{scale_str}")
+
+            if patience_counter >= patience:
+                stop_reason = f"🛑 Patience Early Stop: 验证损失连续 {patience} 次未改善 (历史最佳: {best_val_loss:.4f} @ Step {best_step})"
+                print(f"\n{stop_reason} -> 自动刹车保护，防止过拟合！")
+                break
+
+    print(f"\n[训练终止状态]: {stop_reason}")
+
+    # 恢复最佳权重
+    if best_state is not None:
+        model.load_state_dict({k: v.to(device) for k, v in best_state.items()})
+        print(f"✨ 已自动加载 Step {best_step} 的历史最佳模型权重 (Val Loss: {best_val_loss:.4f})")
 
     # 5. 训练完成后的生成测试
     print("\n" + "=" * 80)
-    print("【训练后 (偏振门生效) 文本生成实测】:")
+    print("【训练后 (偏振门最佳模型) 文本生成实测】:")
     print("=" * 80)
     model.eval()
     with torch.no_grad():
@@ -128,7 +171,7 @@ def train_shakespeare(attn_type='optical', pure_optical=False, max_iters=1000, d
     # 保存检查点
     ckpt_path = f"optical_shakespeare_{attn_type}.pt"
     torch.save(model.state_dict(), ckpt_path)
-    print(f"✅ 模型检查点已保存至: {ckpt_path}\n")
+    print(f"✅ 最优模型检查点已保存至: {ckpt_path}\n")
 
 if __name__ == "__main__":
     import argparse
@@ -136,7 +179,11 @@ if __name__ == "__main__":
     parser.add_argument("--attn-type", type=str, default="optical", choices=["optical", "softmax"], help="Attention type")
     parser.add_argument("--pure-optical", action="store_true", default=True, help="Use pure optical mode (no LayerNorm, no sum division, sin^4 MLP)")
     parser.add_argument("--with-layernorm", dest="pure_optical", action="store_false", help="Enable electronic LayerNorm and beam sum normalization")
-    parser.add_argument("--iters", type=int, default=800, help="Training iterations")
+    parser.add_argument("--iters", type=int, default=1000, help="Max training iterations")
+    parser.add_argument("--eval-interval", type=int, default=100, help="Evaluation interval")
+    parser.add_argument("--patience", type=int, default=4, help="Patience (number of evals without improvement)")
+    parser.add_argument("--min-delta", type=float, default=0.005, help="Minimum delta improvement")
+    parser.add_argument("--target-loss", type=float, default=None, help="Target validation loss to stop early")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Device (cuda or cpu)")
     args = parser.parse_args()
 
@@ -144,5 +191,9 @@ if __name__ == "__main__":
         attn_type=args.attn_type,
         pure_optical=args.pure_optical,
         max_iters=args.iters,
+        eval_interval=args.eval_interval,
+        patience=args.patience,
+        min_delta=args.min_delta,
+        target_loss=args.target_loss,
         device=args.device
     )
