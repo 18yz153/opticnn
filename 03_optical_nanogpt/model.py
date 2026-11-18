@@ -26,11 +26,11 @@ class GPTConfig:
     n_embd: int = 128          # 嵌入维度
     dropout: float = 0.0
     bias: bool = False
-    # 注意力模式: 'optical' (全光 sin^4 偏振门) 或 'softmax' (传统电子基线)
+    # 注意力模式: 'optical' (全光 sin^4 偏振门), 'softmax' (传统电子基线), 'sa' (可饱和吸收体), 'soa' (半导体光放大器交叉增益)
     attention_type: str = 'optical'
     # 是否进行无损光束总功率归一化 (若为 False, 则采用完全被动的无除法固定耦合衰减 1/sqrt(T))
     normalize_beam: bool = True
-    # MLP 激活函数模式: 'optical' (sin^4 偏振透射) 或 'gelu' (传统电子激活)
+    # MLP 激活函数模式: 'optical' (sin^4 偏振透射), 'gelu' (传统电子激活), 'sa' (可饱和吸收体透射)
     mlp_type: str = 'optical'
     # 归一化模式: 'layernorm' (电子 LayerNorm) 或 'none' (纯光学定向耦合直通)
     norm_type: str = 'layernorm'
@@ -48,8 +48,16 @@ class OpticalCausalSelfAttention(nn.Module):
         self.attention_type = config.attention_type
         self.normalize_beam = config.normalize_beam
 
-        # 核心 Code Hack: 光学旋钮 (可学习参数，动态适配电光调制相位区间)
+        # 核心光学可学习参数 (Phase Scale & DC Bias 底电流)
         self.optical_scale = nn.Parameter(torch.ones(1) * 0.1)
+        self.optical_bias = nn.Parameter(torch.zeros(1))
+
+        # 可饱和吸收体饱和光强 (I_sat)
+        self.sa_sat = nn.Parameter(torch.ones(1) * 1.0)
+
+        # 半导体光放大器 (SOA) 小信号增益 G0 与微腔饱和功率 P_sat
+        self.soa_gain = nn.Parameter(torch.ones(1) * 2.0)
+        self.soa_sat = nn.Parameter(torch.ones(1) * 1.0)
 
         # 因果遮罩 (下三角阵)
         self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
@@ -71,20 +79,34 @@ class OpticalCausalSelfAttention(nn.Module):
             att = F.softmax(att, dim=-1)
         elif self.attention_type == 'optical':
             # 全光 Native 偏振门 Attention:
-            # 1. 送入干涉仪并调节偏振角
-            theta = att * self.optical_scale
-            # 2. 穿过双折射级联偏振片 (sin^4 响应)
+            theta = att * self.optical_scale + self.optical_bias
             att = torch.sin(theta) ** 4
-            # 3. 物理因果遮罩: 未来时间步的光被不透明光阑完全阻断 (透射率精确为 0.0)
             att = att.masked_fill(self.bias[:, :, :T, :T] == 0, 0.0)
-            # 4. 光束能量分束:
             if self.normalize_beam:
-                # 动态分束归一化 (需全局光强反馈)
                 att = att / (att.sum(dim=-1, keepdim=True) + 1e-6)
             else:
-                # 【纯被动无除法全光模式】: 采用波导中固定的 1xT 无源分束损耗 1/sqrt(T)，
-                # 彻底消除任何动态求和除法，纯靠光波在波导中的自然传播！
                 att = att * (1.0 / math.sqrt(T))
+        elif self.attention_type == 'sa':
+            # 可饱和吸收体 (Saturable Absorber, 如石墨烯/二维材料泡利阻塞):
+            # 弱光被大量吸收，强光达到饱和光强后材料变透明 (光滑软阈值，导数不归零！)
+            theta = att * self.optical_scale + self.optical_bias
+            I_pos = F.relu(theta)
+            u = (I_pos / (torch.abs(self.sa_sat) + 1e-4)) ** 2
+            T_sa = 0.05 + 0.95 * (u / (1.0 + u))
+            att = I_pos * T_sa
+            att = att.masked_fill(self.bias[:, :, :T, :T] == 0, 0.0)
+            if self.normalize_beam:
+                att = att / (att.sum(dim=-1, keepdim=True) + 1e-6)
+            else:
+                att = att * (1.0 / math.sqrt(T))
+        elif self.attention_type == 'soa':
+            # 半导体光放大器交叉增益调制 (SOA XGM - 物理受激辐射载流子竞争):
+            # 强光通道大量抢占载流子，产生物理级增益饱和压制 (天然等效配分函数归一化)
+            P_in = F.relu(att * self.optical_scale + self.optical_bias)
+            P_in = P_in.masked_fill(self.bias[:, :, :T, :T] == 0, 0.0)
+            P_total = P_in.sum(dim=-1, keepdim=True)
+            G = torch.abs(self.soa_gain) / (1.0 + P_total / (torch.abs(self.soa_sat) + 1e-4))
+            att = P_in * G
 
         att = self.attn_dropout(att)
         y = att @ v
@@ -102,6 +124,9 @@ class MLP(nn.Module):
         elif self.mlp_type == 'optical':
             # 全光原生 MLP 偏振门: 可学习相位旋钮 + sin^4 透射率
             self.mlp_scale = nn.Parameter(torch.ones(1) * 0.1)
+        elif self.mlp_type == 'sa':
+            # 可饱和吸收体非线性激活: 弱光吸收、强光完全透明透射
+            self.sa_sat = nn.Parameter(torch.ones(1) * 1.0)
         self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
 
@@ -112,6 +137,11 @@ class MLP(nn.Module):
         elif self.mlp_type == 'optical':
             # 全光偏振门透射率: 彻底干掉电子 GELU/ReLU
             x = torch.sin(x * self.mlp_scale) ** 4
+        elif self.mlp_type == 'sa':
+            I_pos = F.relu(x)
+            u = (I_pos / (torch.abs(self.sa_sat) + 1e-4)) ** 2
+            T_sa = 0.05 + 0.95 * (u / (1.0 + u))
+            x = I_pos * T_sa
         x = self.c_proj(x)
         x = self.dropout(x)
         return x
@@ -214,9 +244,18 @@ def audit_optical_pipeline(config: GPTConfig):
     print(f"{'Q,K,V 投影矩阵':<18} | {'x @ W_q, x @ W_k, x @ W_v':<24} | {'MZI 阵列 / 硅光波导网格':<20} | {'🟢 纯光学 (皮秒级)'}")
     print(f"{'注意力点积打分':<18} | {'Q @ K^T':<24} | {'空间衍射 / 波导交叉乘积':<20} | {'🟢 纯光学 (光速)'}")
     print(f"{'因果遮罩 (Mask)':<18} | {'masked_fill(0.0)':<24} | {'物理光阑 / 空间不透明快门':<20} | {'🟢 纯光学 (物理阻断)'}")
-    print(f"{'注意力非线性':<18} | {'sin^4(theta)':<24} | {'两级双折射偏振滤光片':<20} | {'🟢 纯光学 (Lyot门)'}")
+    if config.attention_type == 'softmax':
+        print(f"{'注意力非线性':<18} | {'Softmax(QK^T)':<24} | {'电子指数加除法':<20} | {'🔴 电子运算 (基线)'}")
+    elif config.attention_type == 'optical':
+        print(f"{'注意力非线性':<18} | {'sin^4(theta)':<24} | {'两级双折射偏振滤光片':<20} | {'🟢 纯光学 (Lyot门)'}")
+    elif config.attention_type == 'sa':
+        print(f"{'注意力非线性':<18} | {'T_SA(I) * I':<24} | {'石墨烯可饱和吸收体':<20} | {'🟢 纯光学 (泡利阻塞)'}")
+    elif config.attention_type == 'soa':
+        print(f"{'注意力非线性':<18} | {'SOA-XGM(P)':<24} | {'半导体光放大器载流子竞争':<20} | {'🟢 有源光学 (物理归一)'}")
     
-    if config.normalize_beam:
+    if config.attention_type == 'soa':
+        print(f"{'注意力归一化':<18} | {'1/(1 + P/P_sat)':<24} | {'SOA 载流子饱和物理耗尽':<20} | {'🟢 有源光学 (零数字除法)'}")
+    elif config.normalize_beam:
         print(f"{'注意力归一化':<18} | {'/ sum(att)':<24} | {'软件除法 (偷用电子求和)':<20} | {'🔴 电子运算 (瓶颈)'}")
     else:
         print(f"{'注意力归一化':<18} | {'* (1/sqrt(T))':<24} | {'无源固定无耗分束器':<20} | {'🟢 纯光学 (零计算开销)'}")

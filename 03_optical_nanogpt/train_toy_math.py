@@ -255,7 +255,7 @@ def train_toy_math(attn_type='optical', pure_optical=False, max_iters=1500,
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Stage 2: Toy Math Addition Optical NanoGPT")
-    parser.add_argument("--attn-type", type=str, default="optical", choices=["optical", "softmax"], help="Attention type")
+    parser.add_argument("--attn-type", type=str, default="optical", choices=["optical", "softmax", "sa", "soa"], help="Attention type")
     parser.add_argument("--pure-optical", action="store_true", default=False, help="Use pure optical mode (passive 1/sqrt(T), sin^4 MLP, no LayerNorm)")
     parser.add_argument("--iters", type=int, default=1500, help="Max training iterations")
     parser.add_argument("--eval-interval", type=int, default=150, help="Evaluation interval")

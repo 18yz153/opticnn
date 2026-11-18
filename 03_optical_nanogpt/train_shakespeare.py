@@ -176,7 +176,7 @@ def train_shakespeare(attn_type='optical', pure_optical=False, max_iters=1000,
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Stage 1: TinyShakespeare Optical NanoGPT")
-    parser.add_argument("--attn-type", type=str, default="optical", choices=["optical", "softmax"], help="Attention type")
+    parser.add_argument("--attn-type", type=str, default="optical", choices=["optical", "softmax", "sa", "soa"], help="Attention type")
     parser.add_argument("--pure-optical", action="store_true", default=True, help="Use pure optical mode (no LayerNorm, no sum division, sin^4 MLP)")
     parser.add_argument("--with-layernorm", dest="pure_optical", action="store_false", help="Enable electronic LayerNorm and beam sum normalization")
     parser.add_argument("--iters", type=int, default=1000, help="Max training iterations")
