@@ -16,13 +16,15 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
 import torch
-from model import OpticalNanoGPT, GPTConfig
+from model import OpticalNanoGPT, GPTConfig, audit_optical_pipeline
 from data.prepare_shakespeare import download_data, FILE_PATH
 
-def train_shakespeare(attn_type='optical', max_iters=1000, device='cuda' if torch.cuda.is_available() else 'cpu'):
+def train_shakespeare(attn_type='optical', pure_optical=False, max_iters=1000, device='cuda' if torch.cuda.is_available() else 'cpu'):
     print("=" * 80)
     print(f"   🎭 Stage 1: 字符级莎士比亚全光 NanoGPT 训练 (Attention: {attn_type.upper()}) 🎭")
-    print(f"   硬件加速设备: {device.upper()}")
+    print(f"   硬件加速设备: {device.upper()} (GPU 极速训练)")
+    if device == 'cuda':
+        print(f"   GPU 型号: {torch.cuda.get_device_name(0)}")
     print("=" * 80)
 
     # 1. 确保数据就绪
@@ -64,8 +66,11 @@ def train_shakespeare(attn_type='optical', max_iters=1000, device='cuda' if torc
         n_head=4,
         n_embd=128,
         attention_type=attn_type,
-        normalize_beam=True
+        normalize_beam=not pure_optical,           # 若 pure_optical=True，彻底关闭动态除法求和！
+        mlp_type='optical' if pure_optical else 'gelu', # 若 pure_optical=True，MLP 全换成偏振门！
+        norm_type='none' if pure_optical else 'layernorm' # 若 pure_optical=True，干掉 LayerNorm！
     )
+    audit_optical_pipeline(config)
     model = OpticalNanoGPT(config).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"模型参数量: {n_params / 1e3:.1f} K")
@@ -126,4 +131,4 @@ def train_shakespeare(attn_type='optical', max_iters=1000, device='cuda' if torc
     print(f"✅ 模型检查点已保存至: {ckpt_path}\n")
 
 if __name__ == "__main__":
-    train_shakespeare(attn_type='optical', max_iters=800)
+    train_shakespeare(attn_type='optical', pure_optical=True, max_iters=800)

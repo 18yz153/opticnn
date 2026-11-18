@@ -20,13 +20,15 @@ if hasattr(sys.stdout, 'reconfigure'):
 
 import torch
 import torch.nn as nn
-from model import OpticalNanoGPT, GPTConfig
+from model import OpticalNanoGPT, GPTConfig, audit_optical_pipeline
 from data.prepare_toy_math import generate_math_dataset, FILE_PATH
 
-def train_toy_math(attn_type='optical', max_iters=1200, device='cuda' if torch.cuda.is_available() else 'cpu'):
+def train_toy_math(attn_type='optical', pure_optical=False, max_iters=1200, device='cuda' if torch.cuda.is_available() else 'cpu'):
     print("=" * 80)
     print(f"   🧮 Stage 2: 玩具级加法数据路由实测 (Attention: {attn_type.upper()}) 🧮")
-    print(f"   硬件加速设备: {device.upper()}")
+    print(f"   硬件加速设备: {device.upper()} (GPU 极速训练)")
+    if device == 'cuda':
+        print(f"   GPU 型号: {torch.cuda.get_device_name(0)}")
     print("=" * 80)
 
     # 1. 准备数据: 支持一位数加法 (例如 7+8=15\n) 与 两位数加法
@@ -81,8 +83,11 @@ def train_toy_math(attn_type='optical', max_iters=1200, device='cuda' if torch.c
         n_head=4,
         n_embd=64,
         attention_type=attn_type,
-        normalize_beam=True
+        normalize_beam=not pure_optical,
+        mlp_type='optical' if pure_optical else 'gelu',
+        norm_type='none' if pure_optical else 'layernorm'
     )
+    audit_optical_pipeline(config)
     model = OpticalNanoGPT(config).to(device)
     print(f"模型参数量: {sum(p.numel() for p in model.parameters()) / 1e3:.1f} K")
     print(f"核心机制: {'✨ 全光 sin^4 偏振门 (无Softmax)' if attn_type == 'optical' else '⚡ 传统电子 Softmax'}\n")
@@ -161,4 +166,4 @@ def train_toy_math(attn_type='optical', max_iters=1200, device='cuda' if torch.c
         print("⚠️ 模型仍在逼近中，可通过增加训练迭代或微调 optical_scale 进一步提升精度。\n")
 
 if __name__ == "__main__":
-    train_toy_math(attn_type='optical', max_iters=1200)
+    train_toy_math(attn_type='optical', pure_optical=True, max_iters=1200)
