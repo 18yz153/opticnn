@@ -131,4 +131,18 @@ def train_shakespeare(attn_type='optical', pure_optical=False, max_iters=1000, d
     print(f"✅ 模型检查点已保存至: {ckpt_path}\n")
 
 if __name__ == "__main__":
-    train_shakespeare(attn_type='optical', pure_optical=True, max_iters=800)
+    import argparse
+    parser = argparse.ArgumentParser(description="Stage 1: TinyShakespeare Optical NanoGPT")
+    parser.add_argument("--attn-type", type=str, default="optical", choices=["optical", "softmax"], help="Attention type")
+    parser.add_argument("--pure-optical", action="store_true", default=True, help="Use pure optical mode (no LayerNorm, no sum division, sin^4 MLP)")
+    parser.add_argument("--with-layernorm", dest="pure_optical", action="store_false", help="Enable electronic LayerNorm and beam sum normalization")
+    parser.add_argument("--iters", type=int, default=800, help="Training iterations")
+    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Device (cuda or cpu)")
+    args = parser.parse_args()
+
+    train_shakespeare(
+        attn_type=args.attn_type,
+        pure_optical=args.pure_optical,
+        max_iters=args.iters,
+        device=args.device
+    )

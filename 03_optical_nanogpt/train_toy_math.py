@@ -166,4 +166,17 @@ def train_toy_math(attn_type='optical', pure_optical=False, max_iters=1200, devi
         print("⚠️ 模型仍在逼近中，可通过增加训练迭代或微调 optical_scale 进一步提升精度。\n")
 
 if __name__ == "__main__":
-    train_toy_math(attn_type='optical', pure_optical=True, max_iters=1200)
+    import argparse
+    parser = argparse.ArgumentParser(description="Stage 2: Toy Math Addition Optical NanoGPT")
+    parser.add_argument("--attn-type", type=str, default="optical", choices=["optical", "softmax"], help="Attention type")
+    parser.add_argument("--pure-optical", action="store_true", default=False, help="Use pure optical mode (passive 1/sqrt(T), sin^4 MLP, no LayerNorm)")
+    parser.add_argument("--iters", type=int, default=1200, help="Training iterations")
+    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Device (cuda or cpu)")
+    args = parser.parse_args()
+
+    train_toy_math(
+        attn_type=args.attn_type,
+        pure_optical=args.pure_optical,
+        max_iters=args.iters,
+        device=args.device
+    )
