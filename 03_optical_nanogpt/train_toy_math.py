@@ -51,7 +51,7 @@ def quick_evaluate_math(model, device, encode, decode, num_questions=25):
 
 def train_toy_math(attn_type='optical', pure_optical=False, max_iters=1500,
                    eval_interval=150, patience=4, min_delta=0.005,
-                   target_acc=90.0, target_loss=None,
+                   target_acc=85.0, target_loss=None,
                    device='cuda' if torch.cuda.is_available() else 'cpu'):
     print("=" * 80)
     print(f"   🧮 Stage 2: 玩具级加法数据路由实测 (Attention: {attn_type.upper()}) 🧮")

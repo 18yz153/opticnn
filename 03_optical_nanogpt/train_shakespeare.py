@@ -20,7 +20,7 @@ from model import OpticalNanoGPT, GPTConfig, audit_optical_pipeline
 from data.prepare_shakespeare import download_data, FILE_PATH
 
 def train_shakespeare(attn_type='optical', pure_optical=False, max_iters=1000, 
-                      eval_interval=100, patience=4, min_delta=0.005, target_loss=None,
+                      eval_interval=100, patience=4, min_delta=0.005, target_loss=2.45,
                       device='cuda' if torch.cuda.is_available() else 'cpu'):
     print("=" * 80)
     print(f"   🎭 Stage 1: 字符级莎士比亚全光 NanoGPT 训练 (Attention: {attn_type.upper()}) 🎭")
@@ -183,7 +183,7 @@ if __name__ == "__main__":
     parser.add_argument("--eval-interval", type=int, default=100, help="Evaluation interval")
     parser.add_argument("--patience", type=int, default=4, help="Patience (number of evals without improvement)")
     parser.add_argument("--min-delta", type=float, default=0.005, help="Minimum delta improvement")
-    parser.add_argument("--target-loss", type=float, default=None, help="Target validation loss to stop early")
+    parser.add_argument("--target-loss", type=float, default=2.45, help="Target validation loss to stop early (default: 2.45)")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Device (cuda or cpu)")
     args = parser.parse_args()
 
