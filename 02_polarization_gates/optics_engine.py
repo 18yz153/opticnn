@@ -1,11 +1,11 @@
 """
-OptiCNN: 全自由度物理光场仿真引擎 (optics_engine.py)
-=====================================================
-建模光的 4 大物理属性:
-  1. 波长 / 频率 (Wavelength / Frequency) -> 实现 WDM 波分复用合成
-  2. 振幅 / 强度 (Amplitude / Intensity)  -> 携带能量与信息
-  3. 相位 / 干涉 (Phase / Interference)   -> 空间相干叠加
-  4. 偏振态 (Polarization / Jones Vector) -> 空间电场矢量方向 [Ex, Ey]^T
+OptiCNN: Optical Field Simulation Engine (optics_engine.py)
+===========================================================
+Models 4 physical properties of light:
+  1. Wavelength / Frequency -> Wavelength Division Multiplexing (WDM)
+  2. Amplitude / Intensity   -> Carries energy and information (I = |E|^2)
+  3. Phase / Interference    -> Coherent interference in space
+  4. Polarization            -> Electric field vector orientation [Ex, Ey]^T
 """
 
 import sys
@@ -15,16 +15,16 @@ import numpy as np
 
 class OpticalField:
     """
-    单个单色光场基元 (Monochromatic Optical Field Mode)
+    A single monochromatic optical field mode.
     """
     def __init__(self, wavelength_nm=1550.0, amplitude=1.0, phase_rad=0.0, jones_vector=None):
-        self.wavelength_nm = float(wavelength_nm)  # 波长 (默认电信 C 波段 1550 nm)
-        self.amplitude = float(amplitude)          # 电场幅度 (实数 >= 0)
-        self.phase_rad = float(phase_rad % (2 * np.pi)) # 相位 (0 到 2*pi)
-        
-        # 偏振态: 归一化复数琼斯向量 [Ex, Ey]^T
-        # [1, 0] 为水平偏振 (H), [0, 1] 为垂直偏振 (V)
-        # [1, 1]/sqrt(2) 为 45° 对角偏振, [1, -i]/sqrt(2) 为右旋圆偏振
+        self.wavelength_nm = float(wavelength_nm)  # Wavelength (default telecom C-band 1550 nm)
+        self.amplitude = float(amplitude)          # Field amplitude (real >= 0)
+        self.phase_rad = float(phase_rad % (2 * np.pi)) # Phase (0 to 2*pi)
+
+        # Polarization state: normalized complex Jones vector [Ex, Ey]^T
+        # [1, 0] is Horizontal (H), [0, 1] is Vertical (V)
+        # [1, 1]/sqrt(2) is Diagonal (45 deg)
         if jones_vector is None:
             self.jones = np.array([1.0 + 0.0j, 0.0 + 0.0j], dtype=np.complex128)
         else:
@@ -34,33 +34,32 @@ class OpticalField:
 
     @property
     def intensity(self):
-        """光强度 (光子通量 / 模平方) I = |A|^2"""
+        """Optical intensity (power) I = |A|^2"""
         return self.amplitude ** 2
 
     @property
     def complex_field(self):
-        """完整空间复电场矢量 E = A * exp(i * phase) * Jones"""
+        """Full spatial complex electric field vector E = A * exp(i * phase) * Jones"""
         return self.amplitude * np.exp(1.0j * self.phase_rad) * self.jones
 
     def __repr__(self):
-        # 计算偏振角与椭圆率
         h_power = np.abs(self.jones[0])**2
         v_power = np.abs(self.jones[1])**2
-        return (f"OpticalField(λ={self.wavelength_nm:.1f}nm, I={self.intensity:.3f}, "
-                f"Phase={np.degrees(self.phase_rad):.1f}°, H/V=[{h_power:.2f}, {v_power:.2f}])")
+        return (f"OpticalField(lambda={self.wavelength_nm:.1f}nm, I={self.intensity:.3f}, "
+                f"Phase={np.degrees(self.phase_rad):.1f} deg, H/V=[{h_power:.2f}, {v_power:.2f}])")
 
 
 class LaserEmitter:
     """
-    激光发射器 (可调节波长、强度、初始相位、偏振态)
+    Laser source with tunable wavelength, intensity, phase, and polarization.
     """
     def __init__(self, wavelength_nm=1550.0):
         self.wavelength_nm = wavelength_nm
 
     def emit(self, intensity=1.0, phase_deg=0.0, polarization_angle_deg=0.0):
         """
-        发射一束光:
-        polarization_angle_deg: 0° 为水平线偏(H), 90° 为垂直线偏(V), 45° 为对角线偏
+        Emits a light beam:
+        polarization_angle_deg: 0 deg = H, 90 deg = V, 45 deg = diagonal
         """
         theta = np.radians(polarization_angle_deg)
         jones = np.array([np.cos(theta), np.sin(theta)], dtype=np.complex128)
@@ -74,19 +73,19 @@ class LaserEmitter:
 
 class OpticalReceiver:
     """
-    智能光接收器 (可切换探测模式):
-    1. 平方律强度探测 (Square-law Intensity)
-    2. 偏振态偏振计分解 (Polarization Resolver: 分离 H 和 V 偏振分量)
-    3. 光谱仪分解 (Spectrometer: 区分不同波长的通道)
+    Optical receiver with multiple detection modes:
+    1. Square-law intensity detection
+    2. Polarization beam splitting (PBS: decomposes into H and V components)
+    3. Spectrometer channel decomposition (WDM demultiplexing)
     """
     def detect_intensity(self, field: OpticalField):
-        """探测标量光强 I = |E|^2"""
+        """Detects scalar optical intensity I = |E|^2"""
         return field.intensity
 
     def detect_polarization_split(self, field: OpticalField):
         """
-        通过偏振分束器 (PBS) 探测 H 与 V 偏振各自的光强
-        天然满足: I_H + I_V = I_total
+        Detects H and V polarization intensities via Polarization Beam Splitter (PBS).
+        Satisfies: I_H + I_V = I_total
         """
         total_I = field.intensity
         I_h = total_I * (np.abs(field.jones[0]) ** 2)
@@ -95,11 +94,10 @@ class OpticalReceiver:
 
     def combine_and_detect(self, fields: list[OpticalField]):
         """
-        合成多个输入光波并进行相干/非相干探测:
-        - 相同波长 + 相同偏振 -> 相干干涉叠加 (振幅相加)
-        - 不同波长 或 正交偏振 -> 非相干能量累加 (光强直接相加)
+        Combines multiple input optical beams:
+        - Same wavelength + same polarization -> Coherent interference (amplitudes add)
+        - Different wavelength OR orthogonal polarization -> Incoherent sum (intensities add)
         """
-        # 按波长分组
         wl_groups = {}
         for f in fields:
             wl = round(f.wavelength_nm, 2)
@@ -109,11 +107,11 @@ class OpticalReceiver:
         details = {}
 
         for wl, grp in wl_groups.items():
-            # 相同波长下，矢量复振幅相干求和
+            # For same wavelength, sum complex field vectors coherently
             total_E = np.zeros(2, dtype=np.complex128)
             for f in grp:
                 total_E += f.complex_field
-            
+
             p_wl = np.sum(np.abs(total_E) ** 2)
             details[f"{wl}nm"] = p_wl
             total_measured_power += p_wl
@@ -123,12 +121,12 @@ class OpticalReceiver:
 
 class PolarizationGate:
     """
-    偏振调制门 (Polarization Gate):
-    利用电光效应 (Pockels Cell) 或非线性偏振旋转 (NPR) 改变光场的偏振态
+    Polarization gate:
+    Modulates polarization state via electro-optic effect (Pockels Cell) or waveplates.
     """
     @staticmethod
     def rotate(field: OpticalField, theta_rad: float):
-        """旋转偏振方向 (波片/旋光器)"""
+        """Rotates polarization angle (waveplate / polarization rotator)."""
         rot_matrix = np.array([
             [np.cos(theta_rad), -np.sin(theta_rad)],
             [np.sin(theta_rad),  np.cos(theta_rad)]
@@ -143,7 +141,7 @@ class PolarizationGate:
 
     @staticmethod
     def phase_retard(field: OpticalField, delta_phi_rad: float):
-        """给垂直分量引入相对于水平分量的相位延迟 (双折射晶体 / Pockels cell)"""
+        """Introduces phase delay to vertical component relative to horizontal (birefringent crystal)."""
         retard_matrix = np.array([
             [1.0 + 0.0j, 0.0 + 0.0j],
             [0.0 + 0.0j, np.exp(1.0j * delta_phi_rad)]

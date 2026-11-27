@@ -1,14 +1,18 @@
 """
-NanoGPT 全光架构核心模型 (model.py)
+Optical NanoGPT Core Model (model.py)
 =====================================
-在 Andrej Karpathy 的 NanoGPT 极简架构基础上，
-将电子域的 Softmax 注意力机制升级为【全光原生偏振门 (Polarization Gate) 注意力机制】:
-  - 传统电子 Attention: att = F.softmax(att, dim=-1)
-  - 全光 Native Attention:
-      self.optical_scale = nn.Parameter(torch.ones(1) * 0.1) # 可学习光学相位旋钮
-      theta = att * self.optical_scale                        # 偏振偏转角
-      att = torch.sin(theta) ** 4                             # 两级偏振片 (Lyot 门) 透过率
-      att = att.masked_fill(mask == 0, 0.0)                   # 物理光束阻断 (透射为 0)
+Based on Andrej Karpathy's NanoGPT architecture,
+with electronic Softmax replaced by native optical attention mechanisms:
+  - Electronic Softmax: att = F.softmax(att, dim=-1)
+  - Optical Native Attention (sin^4 polarization gate):
+      theta = att * self.optical_scale + self.optical_bias
+      att = torch.sin(theta) ** 4
+  - Saturable Absorber (SA) Attention:
+      T_sa = 0.05 + 0.95 * (u / (1.0 + u))
+      att = I_pos * T_sa
+  - Semiconductor Optical Amplifier (SOA) Cross-Gain Modulation (XGM):
+      G = G0 / (1.0 + P_total / P_sat)
+      att = P_in * G  (natural physical sum normalization)
 """
 
 import math
@@ -19,20 +23,20 @@ from torch.nn import functional as F
 
 @dataclass
 class GPTConfig:
-    block_size: int = 128      # 最大上下文长度
-    vocab_size: int = 65       # 字符表大小
-    n_layer: int = 4           # Transformer 层数
-    n_head: int = 4            # 注意力头数
-    n_embd: int = 128          # 嵌入维度
+    block_size: int = 128      # Maximum context length
+    vocab_size: int = 65       # Vocabulary size
+    n_layer: int = 4           # Number of transformer layers
+    n_head: int = 4            # Number of attention heads
+    n_embd: int = 128          # Embedding dimension
     dropout: float = 0.0
     bias: bool = False
-    # 注意力模式: 'optical' (全光 sin^4 偏振门), 'softmax' (传统电子基线), 'sa' (可饱和吸收体), 'soa' (半导体光放大器交叉增益)
+    # Attention type: 'optical' (sin^4), 'softmax' (electronic), 'sa' (saturable absorber), 'soa' (SOA XGM)
     attention_type: str = 'optical'
-    # 是否进行无损光束总功率归一化 (若为 False, 则采用完全被动的无除法固定耦合衰减 1/sqrt(T))
+    # Normalize beam power (True = dynamic division/AGC, False = passive 1/sqrt(T) splitter)
     normalize_beam: bool = True
-    # MLP 激活函数模式: 'optical' (sin^4 偏振透射), 'gelu' (传统电子激活), 'sa' (可饱和吸收体透射)
+    # MLP activation type: 'optical' (sin^4), 'gelu' (electronic), 'sa' (saturable absorber)
     mlp_type: str = 'optical'
-    # 归一化模式: 'layernorm' (电子 LayerNorm) 或 'none' (纯光学定向耦合直通)
+    # Normalization type: 'layernorm' (electronic LayerNorm) or 'none' (optical direct connection)
     norm_type: str = 'layernorm'
 
 class OpticalCausalSelfAttention(nn.Module):
@@ -48,20 +52,20 @@ class OpticalCausalSelfAttention(nn.Module):
         self.attention_type = config.attention_type
         self.normalize_beam = config.normalize_beam
 
-        # 核心光学可学习参数 (Phase Scale & DC Bias 底电流)
+        # Optical learnable parameters (phase scale and DC bias)
         self.optical_scale = nn.Parameter(torch.ones(1) * 0.1)
         self.optical_bias = nn.Parameter(torch.zeros(1))
 
-        # 可饱和吸收体饱和光强 (I_sat)
+        # Saturable absorber saturation intensity (I_sat)
         self.sa_sat = nn.Parameter(torch.ones(1) * 1.0)
 
-        # 半导体光放大器 (SOA) 小信号增益 G0 与微腔饱和功率 P_sat
+        # Semiconductor optical amplifier parameters (small-signal gain G0, saturation power P_sat)
         self.soa_gain = nn.Parameter(torch.ones(1) * 2.0)
         self.soa_sat = nn.Parameter(torch.ones(1) * 1.0)
 
-        # 因果遮罩 (下三角阵)
+        # Causal mask (lower triangular)
         self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
-                                        .view(1, 1, config.block_size, config.block_size))
+                                         .view(1, 1, config.block_size, config.block_size))
 
     def forward(self, x):
         B, T, C = x.size()
@@ -70,15 +74,15 @@ class OpticalCausalSelfAttention(nn.Module):
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
 
-        # 缩放点积: (B, nh, T, T)
+        # Scaled dot-product: (B, nh, T, T)
         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
 
         if self.attention_type == 'softmax':
-            # 传统电子 Attention
+            # Electronic Softmax Attention
             att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))
             att = F.softmax(att, dim=-1)
         elif self.attention_type == 'optical':
-            # 全光 Native 偏振门 Attention:
+            # Optical Native Polarization Gate (sin^4)
             theta = att * self.optical_scale + self.optical_bias
             att = torch.sin(theta) ** 4
             att = att.masked_fill(self.bias[:, :, :T, :T] == 0, 0.0)
@@ -87,8 +91,7 @@ class OpticalCausalSelfAttention(nn.Module):
             else:
                 att = att * (1.0 / math.sqrt(T))
         elif self.attention_type == 'sa':
-            # 可饱和吸收体 (Saturable Absorber, 如石墨烯/二维材料泡利阻塞):
-            # 弱光被大量吸收，强光达到饱和光强后材料变透明 (光滑软阈值，导数不归零！)
+            # Saturable Absorber (SA - Pauli blocking): smooth threshold without gradient dead zone
             theta = att * self.optical_scale + self.optical_bias
             I_pos = F.relu(theta)
             u = (I_pos / (torch.abs(self.sa_sat) + 1e-4)) ** 2
@@ -100,8 +103,8 @@ class OpticalCausalSelfAttention(nn.Module):
             else:
                 att = att * (1.0 / math.sqrt(T))
         elif self.attention_type == 'soa':
-            # 半导体光放大器交叉增益调制 (SOA XGM - 物理受激辐射载流子竞争):
-            # 强光通道大量抢占载流子，产生物理级增益饱和压制 (天然等效配分函数归一化)
+            # Semiconductor Optical Amplifier (SOA XGM - Carrier Depletion Competition)
+            # Physical carrier saturation naturally normalizes total output power
             P_in = F.relu(att * self.optical_scale + self.optical_bias)
             P_in = P_in.masked_fill(self.bias[:, :, :T, :T] == 0, 0.0)
             P_total = P_in.sum(dim=-1, keepdim=True)
@@ -122,10 +125,8 @@ class MLP(nn.Module):
         if self.mlp_type == 'gelu':
             self.nonlin = nn.GELU()
         elif self.mlp_type == 'optical':
-            # 全光原生 MLP 偏振门: 可学习相位旋钮 + sin^4 透射率
             self.mlp_scale = nn.Parameter(torch.ones(1) * 0.1)
         elif self.mlp_type == 'sa':
-            # 可饱和吸收体非线性激活: 弱光吸收、强光完全透明透射
             self.sa_sat = nn.Parameter(torch.ones(1) * 1.0)
         self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
@@ -135,7 +136,6 @@ class MLP(nn.Module):
         if self.mlp_type == 'gelu':
             x = self.nonlin(x)
         elif self.mlp_type == 'optical':
-            # 全光偏振门透射率: 彻底干掉电子 GELU/ReLU
             x = torch.sin(x * self.mlp_scale) ** 4
         elif self.mlp_type == 'sa':
             I_pos = F.relu(x)
@@ -161,7 +161,7 @@ class Block(nn.Module):
             x = x + self.attn(self.ln_1(x))
             x = x + self.mlp(self.ln_2(x))
         else:
-            # 纯光学直通 (3dB 定向耦合器无源叠加，无电子 LayerNorm)
+            # Pure optical direct connection (3dB directional coupler addition, no LayerNorm)
             x = x + self.attn(x)
             x = x + self.mlp(x)
         return x
@@ -179,10 +179,7 @@ class OpticalNanoGPT(nn.Module):
             ln_f = nn.LayerNorm(config.n_embd) if config.norm_type == 'layernorm' else nn.Identity(),
         ))
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        # 权重共享
         self.transformer.wte.weight = self.lm_head.weight
-
-        # 初始化权重
         self.apply(self._init_weights)
 
     def _init_weights(self, module):
@@ -196,7 +193,7 @@ class OpticalNanoGPT(nn.Module):
     def forward(self, idx, targets=None):
         device = idx.device
         b, t = idx.size()
-        assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is {self.config.block_size}"
+        assert t <= self.config.block_size, f"Sequence length {t} exceeds block size {self.config.block_size}"
         pos = torch.arange(0, t, dtype=torch.long, device=device)
 
         tok_emb = self.transformer.wte(idx)
@@ -218,7 +215,7 @@ class OpticalNanoGPT(nn.Module):
 
     @torch.no_grad()
     def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
-        """自回归生成文本"""
+        """Autoregressive text generation."""
         for _ in range(max_new_tokens):
             idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]
             logits, _ = self(idx_cond)
@@ -234,45 +231,48 @@ class OpticalNanoGPT(nn.Module):
 
 def audit_optical_pipeline(config: GPTConfig):
     """
-    物理审计: 逐项核查整个 NanoGPT 计算流中，哪些是真正的纯光运算，哪些偷用了电学运算。
+    Physical Audit: Checks whether each operation in NanoGPT is purely optical or electronic.
     """
     print("\n" + "=" * 80)
-    print("        🔬 NanoGPT 全计算流程『光 vs 电』真实物理保真度审计报告 🔬")
+    print("        NanoGPT Optical vs Electronic Physical Fidelity Audit Report")
     print("=" * 80)
-    print(f"{'计算环节':<18} | {'数学表达式':<24} | {'物理实现方式':<20} | {'属性判定'}")
+    print(f"{'Operation':<22} | {'Math Expression':<24} | {'Physical Realization':<22} | {'Fidelity'}")
     print("-" * 80)
-    print(f"{'Q,K,V 投影矩阵':<18} | {'x @ W_q, x @ W_k, x @ W_v':<24} | {'MZI 阵列 / 硅光波导网格':<20} | {'🟢 纯光学 (皮秒级)'}")
-    print(f"{'注意力点积打分':<18} | {'Q @ K^T':<24} | {'空间衍射 / 波导交叉乘积':<20} | {'🟢 纯光学 (光速)'}")
-    print(f"{'因果遮罩 (Mask)':<18} | {'masked_fill(0.0)':<24} | {'物理光阑 / 空间不透明快门':<20} | {'🟢 纯光学 (物理阻断)'}")
+    print(f"{'Q,K,V Projections':<22} | {'x @ W_q, x @ W_k, x @ W_v':<24} | {'MZI Mesh / Waveguides':<22} | {'[Pure Optical] (ps)'}")
+    print(f"{'Dot-product Scoring':<22} | {'Q @ K^T':<24} | {'Spatial Interference':<22} | {'[Pure Optical] (c)'}")
+    print(f"{'Causal Mask':<22} | {'masked_fill(0.0)':<24} | {'Physical Optical Aperture':<22} | {'[Pure Optical] (block)'}")
+
     if config.attention_type == 'softmax':
-        print(f"{'注意力非线性':<18} | {'Softmax(QK^T)':<24} | {'电子指数加除法':<20} | {'🔴 电子运算 (基线)'}")
+        print(f"{'Attention Non-lin':<22} | {'Softmax(QK^T)':<24} | {'Electronic Exp & Div':<22} | {'[Electronic Baseline]'}")
     elif config.attention_type == 'optical':
-        print(f"{'注意力非线性':<18} | {'sin^4(theta)':<24} | {'两级双折射偏振滤光片':<20} | {'🟢 纯光学 (Lyot门)'}")
+        print(f"{'Attention Non-lin':<22} | {'sin^4(theta)':<24} | {'Lyot Polarization Gate':<22} | {'[Pure Optical] (Lyot)'}")
     elif config.attention_type == 'sa':
-        print(f"{'注意力非线性':<18} | {'T_SA(I) * I':<24} | {'石墨烯可饱和吸收体':<20} | {'🟢 纯光学 (泡利阻塞)'}")
+        print(f"{'Attention Non-lin':<22} | {'T_SA(I) * I':<22} | {'Saturable Absorber':<22} | {'[Pure Optical] (Pauli)'}")
     elif config.attention_type == 'soa':
-        print(f"{'注意力非线性':<18} | {'SOA-XGM(P)':<24} | {'半导体光放大器载流子竞争':<20} | {'🟢 有源光学 (物理归一)'}")
-    
+        print(f"{'Attention Non-lin':<22} | {'SOA-XGM(P)':<24} | {'SOA Carrier Competition':<22} | {'[Active Optical]'}")
+
     if config.attention_type == 'soa':
-        print(f"{'注意力归一化':<18} | {'1/(1 + P/P_sat)':<24} | {'SOA 载流子饱和物理耗尽':<20} | {'🟢 有源光学 (零数字除法)'}")
+        print(f"{'Beam Normalization':<22} | {'1/(1 + P/P_sat)':<24} | {'SOA Carrier Saturation':<22} | {'[Active Optical] (no div)'}")
     elif config.normalize_beam:
-        print(f"{'注意力归一化':<18} | {'/ sum(att)':<24} | {'软件除法 (偷用电子求和)':<20} | {'🔴 电子运算 (瓶颈)'}")
+        print(f"{'Beam Normalization':<22} | {'/ sum(att)':<24} | {'Software Division (ALU)':<22} | {'[Electronic Bottleneck]'}")
     else:
-        print(f"{'注意力归一化':<18} | {'* (1/sqrt(T))':<24} | {'无源固定无耗分束器':<20} | {'🟢 纯光学 (零计算开销)'}")
-        
-    print(f"{'Value 加权汇聚':<18} | {'att @ V':<24} | {'多波导干涉叠加汇聚':<20} | {'🟢 纯光学 (天然加法)'}")
-    print(f"{'残差跳连相加':<18} | {'x + attn(x)':<24} | {'3dB 定向耦合器合波':<20} | {'🟢 纯光学 (无源器件)'}")
+        print(f"{'Beam Normalization':<22} | {'* (1/sqrt(T))':<24} | {'Passive Waveguide Splitter':<22} | {'[Pure Optical] (zero cost)'}")
+
+    print(f"{'Value Weighting':<22} | {'att @ V':<24} | {'Multi-waveguide Sum':<22} | {'[Pure Optical] (natural)'}")
+    print(f"{'Residual Add':<22} | {'x + attn(x)':<24} | {'3dB Directional Coupler':<22} | {'[Pure Optical] (passive)'}")
 
     if config.norm_type == 'layernorm':
-        print(f"{'LayerNorm 归一化':<18} | {'(x - mu) / sigma':<24} | {'电子算均值方差除法':<20} | {'🔴 电子运算 (瓶颈)'}")
+        print(f"{'LayerNorm':<22} | {'(x - mu) / sigma':<24} | {'Electronic DSP Mean/Var':<22} | {'[Electronic Bottleneck]'}")
     else:
-        print(f"{'LayerNorm 归一化':<18} | {'None (直通叠加)':<24} | {'纯光路直通传输':<20} | {'🟢 纯光学 (无电子层)'}")
+        print(f"{'LayerNorm':<22} | {'None (direct)':<24} | {'Passive Optical Path':<22} | {'[Pure Optical] (no norm)'}")
 
     if config.mlp_type == 'gelu':
-        print(f"{'MLP 非线性激活':<18} | {'GELU(z)':<24} | {'传统 CPU/GPU 激活':<20} | {'🔴 电子运算 (瓶颈)'}")
+        print(f"{'MLP Non-linearity':<22} | {'GELU(z)':<24} | {'CPU/GPU ALU':<22} | {'[Electronic Bottleneck]'}")
+    elif config.mlp_type == 'sa':
+        print(f"{'MLP Non-linearity':<22} | {'T_SA(z) * z':<24} | {'Saturable Absorber':<22} | {'[Pure Optical] (SA)'}")
     else:
-        print(f"{'MLP 非线性激活':<18} | {'sin^4(z * scale)':<24} | {'偏振门 / 可饱和吸收体':<20} | {'🟢 纯光学 (物理透射)'}")
+        print(f"{'MLP Non-linearity':<22} | {'sin^4(z * scale)':<24} | {'Polarization Gate':<22} | {'[Pure Optical] (Lyot)'}")
 
-    print(f"{'Token 词表嵌入':<18} | {'Embedding(idx)':<24} | {'电子查找表 / 激光源编码':<20} | {'🟡 边界光电调制 (E/O)'}")
-    print(f"{'最终输出分类':<18} | {'Argmax(detectors)':<24} | {'探测器阵列测最大光强':<20} | {'🟡 边界光电探测 (O/E)'}")
+    print(f"{'Token Embedding':<22} | {'Embedding(idx)':<24} | {'Laser Array + Modulator':<22} | {'[Boundary E/O]'}")
+    print(f"{'Output Decoding':<22} | {'Argmax(detectors)':<24} | {'Photodetector Array':<22} | {'[Boundary O/E]'}")
     print("=" * 80 + "\n")

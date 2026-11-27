@@ -1,7 +1,7 @@
 """
-Step 2 扩展: 绘制 MZI 干涉与能量分配曲线 (保存为 mzi_interference.png)
-================================================================
-本脚本将 2x2 MZI 的干涉光强与理论三角函数分布绘制成精美图表。
+Step 2 Extension: Plot MZI Interference and Power Splitting Curve (Saved as mzi_interference.png)
+================================================================================================
+This script plots the output intensities of a 2x2 MZI against phase shift phi.
 """
 
 import sys
@@ -11,16 +11,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def generate_mzi_plot():
-    # 50:50 耦合分束器
+    # 50:50 directional coupler beam splitter
     bs = (1.0 / np.sqrt(2.0)) * np.array([
         [1.0 + 0.0j, 0.0 + 1.0j],
         [0.0 + 1.0j, 1.0 + 0.0j]
     ], dtype=np.complex128)
 
-    # 输入光场: 单端口注入，振幅为 1.0
+    # Input field: single-port injection, amplitude 1.0
     e_in = np.array([1.0 + 0.0j, 0.0 + 0.0j], dtype=np.complex128)
 
-    # 扫描相位 phi (0 到 4*pi)
+    # Sweep phase phi from 0 to 4*pi
     phis = np.linspace(0, 4 * np.pi, 500)
     i1_list = []
     i2_list = []
@@ -50,8 +50,8 @@ def generate_mzi_plot():
     plt.grid(True, alpha=0.3)
     plt.ylim(-0.05, 1.15)
     plt.legend(fontsize=11, loc='center right')
-    
-    # 标注干涉极值点
+
+    # Annotate interference peaks
     plt.annotate('Constructive Interference (Port 1)', xy=(1.0, 1.0), xytext=(1.2, 1.05),
                  arrowprops=dict(arrowstyle='->', color='#0066cc', lw=1.5), fontsize=10, color='#0066cc')
     plt.annotate('Constructive Interference (Port 2)', xy=(0.0, 1.0), xytext=(0.2, 0.9),
@@ -60,7 +60,7 @@ def generate_mzi_plot():
     output_path = "mzi_interference.png"
     plt.tight_layout()
     plt.savefig(output_path)
-    print(f"📊 干涉仿真曲线已成功保存至: {output_path}")
+    print(f"Interference plot successfully saved to: {output_path}")
 
 if __name__ == "__main__":
     generate_mzi_plot()

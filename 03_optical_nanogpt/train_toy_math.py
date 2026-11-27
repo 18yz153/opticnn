@@ -1,13 +1,13 @@
 """
-Stage 2: 玩具级算术加法 (Toy Math Addition) 全光 NanoGPT 实验
-==============================================================
-目标:
-  验证全光 Native Attention (sin^4 偏振门) 的“精准数据路由 (Data Routing)”与“胜者通吃”能力。
-评判标准:
-  - 输入提示形如: "15+32="
-  - 模型必须自回归生成: "047\\n"
-  - 测试集 100 道随机未见过的两位数加法题，统计完全准确率！
-  - 如果能精准算对，证明 sin^4(theta) 成功实现了对关键数字 Token 的注意力聚集。
+Stage 2: Toy Math Addition Optical NanoGPT Experiment
+======================================================
+Goal:
+  Verify data routing and winner-take-all behavior of optical native attention
+  (sin^4 polarization gate) on arithmetic tasks.
+Criteria:
+  - Input prompt format: "15+32="
+  - Model generates: "047\\n"
+  - Evaluate accuracy across test addition problems.
 """
 
 import os
@@ -24,7 +24,7 @@ from model import OpticalNanoGPT, GPTConfig, audit_optical_pipeline
 from data.prepare_toy_math import generate_math_dataset, FILE_PATH
 
 def quick_evaluate_math(model, device, encode, decode, num_questions=25):
-    """快速评测加法推理准确率，用于训练中期的目标达标与早停判定"""
+    """Quick evaluation of math addition accuracy for early stopping."""
     model.eval()
     correct = 0
     rng = random.Random(777)
@@ -54,20 +54,18 @@ def train_toy_math(attn_type='optical', pure_optical=False, max_iters=1500,
                    target_acc=85.0, target_loss=None,
                    device='cuda' if torch.cuda.is_available() else 'cpu'):
     print("=" * 80)
-    print(f"   🧮 Stage 2: 玩具级加法数据路由实测 (Attention: {attn_type.upper()}) 🧮")
-    print(f"   硬件加速设备: {device.upper()} (GPU 极速训练)")
+    print(f"   🧮 Stage 2: Toy Math Addition Routing Test (Attention: {attn_type.upper()}) 🧮")
+    print(f"   Hardware Device: {device.upper()}")
     if device == 'cuda':
-        print(f"   GPU 型号: {torch.cuda.get_device_name(0)}")
-    print(f"   停机策略: MaxIters={max_iters} | Patience={patience} | MinDelta={min_delta} | TargetAcc={target_acc}%")
+        print(f"   GPU Model: {torch.cuda.get_device_name(0)}")
+    print(f"   Stop Strategy: MaxIters={max_iters} | Patience={patience} | MinDelta={min_delta} | TargetAcc={target_acc}%")
     print("=" * 80)
 
-    # 1. 准备数据: 支持一位数加法 (例如 7+8=15\n) 与 两位数加法
-    # 单双位数混合加法是评估注意力“数据路由”的黄金测试集
+    # 1. Prepare data: single-digit and double-digit addition samples
     random.seed(42)
     lines = []
-    # 构造单双位数精细加法样本
     for _ in range(6000):
-        # 70% 一位数加法 (快速精准测试精准检索与加和), 30% 两位数加法
+        # 75% single-digit addition, 25% double-digit addition
         if random.random() < 0.75:
             a = random.randint(0, 9)
             b = random.randint(0, 9)
@@ -84,9 +82,9 @@ def train_toy_math(attn_type='optical', pure_optical=False, max_iters=1500,
     encode = lambda s: [stoi[c] for c in s]
     decode = lambda l: ''.join([itos[i] for i in l])
 
-    print(f"字符词表: {chars} (词表大小: {vocab_size})")
+    print(f"Vocab chars: {chars} (Vocab size: {vocab_size})")
 
-    # 拆分训练与测试样本
+    # Split train and test sets
     random.seed(123)
     random.shuffle(lines)
     n_train = int(len(lines) * 0.85)
@@ -96,7 +94,7 @@ def train_toy_math(attn_type='optical', pure_optical=False, max_iters=1500,
     train_data = torch.tensor(encode("".join(train_lines)), dtype=torch.long)
     test_data = torch.tensor(encode("".join(test_lines)), dtype=torch.long)
 
-    block_size = 16  # 单行 "15+32=047\n" 长度为 10
+    block_size = 16  # Single line "15+32=047\n" length is 10
     batch_size = 64
 
     def get_batch(data_tensor):
@@ -105,7 +103,7 @@ def train_toy_math(attn_type='optical', pure_optical=False, max_iters=1500,
         y = torch.stack([data_tensor[i + 1:i + block_size + 1] for i in ix])
         return x.to(device), y.to(device)
 
-    # 2. 初始化小型 NanoGPT
+    # 2. Initialize Optical NanoGPT
     config = GPTConfig(
         block_size=block_size,
         vocab_size=vocab_size,
@@ -119,19 +117,19 @@ def train_toy_math(attn_type='optical', pure_optical=False, max_iters=1500,
     )
     audit_optical_pipeline(config)
     model = OpticalNanoGPT(config).to(device)
-    print(f"模型参数量: {sum(p.numel() for p in model.parameters()) / 1e3:.1f} K")
-    print(f"核心机制: {'✨ 全光 sin^4 偏振门 (无Softmax)' if attn_type == 'optical' else '⚡ 传统电子 Softmax'}\n")
+    print(f"Model parameters: {sum(p.numel() for p in model.parameters()) / 1e3:.1f} K")
+    print(f"Attention type: {attn_type.upper()}\n")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-3, weight_decay=1e-3)
 
-    # 3. 智能训练循环 (Max Iters + Target Stop + Patience Early Stop)
+    # 3. Training loop (Max Iters + Target Stop + Patience Early Stop)
     t0 = time.time()
     best_val_loss = float('inf')
     best_acc = 0.0
     best_step = 0
     patience_counter = 0
     best_state = None
-    stop_reason = "达到最大迭代步数 (Max Iters Reached)"
+    stop_reason = "Max iterations reached"
 
     for iter_step in range(1, max_iters + 1):
         xb, yb = get_batch(train_data)
@@ -150,30 +148,30 @@ def train_toy_math(attn_type='optical', pure_optical=False, max_iters=1500,
             val_loss_val = val_loss.item()
             t_elapsed = time.time() - t0
 
-            # 评估当前算术推理准确率 (25 道快速测试题)
+            # Quick evaluation of math accuracy (25 questions)
             cur_acc = quick_evaluate_math(model, device, encode, decode, num_questions=25)
-            scale_info = f" | 光学旋钮 Scale: {model.transformer.h[0].attn.optical_scale.item():.4f}" if attn_type == 'optical' else ""
+            scale_info = f" | Optical Scale: {model.transformer.h[0].attn.optical_scale.item():.4f}" if attn_type == 'optical' else ""
 
-            # 1. 检查 Target Accuracy Stop (目标准确率达标即停)
+            # 1. Check Target Accuracy Stop
             if target_acc is not None and cur_acc >= target_acc:
                 best_acc = cur_acc
                 best_val_loss = val_loss_val
                 best_step = iter_step
                 best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
-                stop_reason = f"🎯 Target Stop: 算术准确率达到 {cur_acc:.1f}% >= 目标 {target_acc:.1f}%！提前圆满达成！"
-                print(f"Step {iter_step:4d}/{max_iters} | 训练 Loss: {loss.item():.4f} | 测试 Loss: {val_loss_val:.4f} | 准确率: {cur_acc:.1f}% | 耗时: {t_elapsed:.1f}s | 🎯 达到目标准确率！")
+                stop_reason = f"Target Accuracy Stop: Accuracy reached {cur_acc:.1f}% >= target {target_acc:.1f}%"
+                print(f"Step {iter_step:4d}/{max_iters} | Train Loss: {loss.item():.4f} | Test Loss: {val_loss_val:.4f} | Acc: {cur_acc:.1f}% | Time: {t_elapsed:.1f}s | Target Accuracy Reached!")
                 break
 
-            # 2. 检查 Target Loss Stop
+            # 2. Check Target Loss Stop
             if target_loss is not None and val_loss_val <= target_loss:
                 best_val_loss = val_loss_val
                 best_step = iter_step
                 best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
-                stop_reason = f"🎯 Target Loss Stop: 验证损失达到 {val_loss_val:.4f} <= 目标 {target_loss:.4f}"
-                print(f"Step {iter_step:4d}/{max_iters} | 训练 Loss: {loss.item():.4f} | 测试 Loss: {val_loss_val:.4f} | 准确率: {cur_acc:.1f}% | 耗时: {t_elapsed:.1f}s | 🎯 达到目标损失！")
+                stop_reason = f"Target Loss Stop: Val loss reached {val_loss_val:.4f} <= target {target_loss:.4f}"
+                print(f"Step {iter_step:4d}/{max_iters} | Train Loss: {loss.item():.4f} | Test Loss: {val_loss_val:.4f} | Acc: {cur_acc:.1f}% | Time: {t_elapsed:.1f}s | Target Loss Reached!")
                 break
 
-            # 3. 检查 Patience Early Stop
+            # 3. Check Patience Early Stop
             if val_loss_val < best_val_loss - min_delta or cur_acc > best_acc:
                 if val_loss_val < best_val_loss - min_delta:
                     best_val_loss = val_loss_val
@@ -182,28 +180,28 @@ def train_toy_math(attn_type='optical', pure_optical=False, max_iters=1500,
                 best_step = iter_step
                 best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
                 patience_counter = 0
-                status_str = f"⭐ 刷新最优 (Loss: {best_val_loss:.4f}, Acc: {best_acc:.1f}%)"
+                status_str = f"New best (Loss: {best_val_loss:.4f}, Acc: {best_acc:.1f}%)"
             else:
                 patience_counter += 1
-                status_str = f"⏳ 耐心等待 ({patience_counter}/{patience})"
+                status_str = f"Patience waiting ({patience_counter}/{patience})"
 
-            print(f"Step {iter_step:4d}/{max_iters} | 训练 Loss: {loss.item():.4f} | 测试 Loss: {val_loss_val:.4f} | 准确率: {cur_acc:.1f}% | 耗时: {t_elapsed:.1f}s | {status_str}{scale_info}")
+            print(f"Step {iter_step:4d}/{max_iters} | Train Loss: {loss.item():.4f} | Test Loss: {val_loss_val:.4f} | Acc: {cur_acc:.1f}% | Time: {t_elapsed:.1f}s | {status_str}{scale_info}")
 
             if patience_counter >= patience:
-                stop_reason = f"🛑 Patience Early Stop: 连续 {patience} 次评估未见提升 (历史最佳: Loss={best_val_loss:.4f}, Acc={best_acc:.1f}% @ Step {best_step})"
-                print(f"\n{stop_reason} -> 自动刹车保护，防止过拟合/空跑！")
+                stop_reason = f"Patience Early Stop: No improvement for {patience} checks (Best: Loss={best_val_loss:.4f}, Acc={best_acc:.1f}% @ Step {best_step})"
+                print(f"\n{stop_reason} -> Early stopping to prevent overfitting.")
                 break
 
-    print(f"\n[训练终止状态]: {stop_reason}")
+    print(f"\n[Training Stop Status]: {stop_reason}")
 
-    # 恢复最优权重
+    # Restore best weights
     if best_state is not None:
         model.load_state_dict({k: v.to(device) for k, v in best_state.items()})
-        print(f"✨ 已自动加载 Step {best_step} 的历史最佳模型权重！")
+        print(f"Loaded best model weights from Step {best_step}!")
 
-    # 4. 精准算术测试 (50 道未见随机加法题)
+    # 4. Accurate arithmetic evaluation (50 unseen random problems)
     print("\n" + "=" * 80)
-    print("【测试集精准算术加法推理评估 (50 道随机测试题 - 最佳权重实测)】:")
+    print("[Test Set Arithmetic Addition Evaluation (50 Random Problems - Best Model)]:")
     print("=" * 80)
 
     model.eval()
@@ -236,21 +234,20 @@ def train_toy_math(attn_type='optical', pure_optical=False, max_iters=1500,
         if is_correct:
             correct += 1
 
-        if i < 15: # 打印前 15 个样本展示
-            mark = "✅ 正确" if is_correct else "❌ 错误"
-            sample_display.append(f"  {prompt:<8} 真实={expected_ans} | 偏振门预测={pred_ans} | {mark}")
+        if i < 15: # Print first 15 samples
+            mark = "CORRECT" if is_correct else "WRONG"
+            sample_display.append(f"  {prompt:<8} Expected={expected_ans} | Pred={pred_ans} | {mark}")
 
     print("\n".join(sample_display))
     acc = correct / total * 100.0
     print("-" * 80)
-    print(f"🎯 最终算术准确率: {correct}/{total} ({acc:.1f}%)")
+    print(f"Final Arithmetic Accuracy: {correct}/{total} ({acc:.1f}%)")
     print("=" * 80)
 
     if acc >= 90.0:
-        print("🎉 结论: sin^4(theta) 偏振门完全具备类似 Softmax 的精准注意力路由与胜者通吃特性！")
-        print("   即使在要求绝对严苛的加法进位推理中，全光 Attention 也能将注意力精准锚定在对应数字上！\n")
+        print("Conclusion: Optical attention achieves high accuracy on arithmetic token routing.\n")
     else:
-        print("⚠️ 模型仍在逼近中，可通过增加训练迭代或微调 optical_scale 进一步提升精度。\n")
+        print("Note: Accuracy can be further improved with more iterations or parameter tuning.\n")
 
 if __name__ == "__main__":
     import argparse

@@ -1,110 +1,108 @@
-# OptiCNN: 光学神经网络与全光 NanoGPT 物理仿真
+# OptiCNN: Optical Neural Networks and Optical NanoGPT Simulation
 
-> 用 Python 与 PyTorch 探索光子计算（Optical Computing）与全光大语言模型（Optical Transformer）的物理可行性。
-> 支持 **NVIDIA CUDA GPU 硬件加速** 与 **严格物理可实现性审计（Physical Fidelity Audit）**。
+> Exploring optical computing and all-optical Transformers using Python and PyTorch.  
+> Supports **NVIDIA CUDA GPU hardware acceleration** and **physical fidelity auditing**.
 
 ---
 
-## 📁 模块化项目结构
+## 📁 Project Structure
 
 ```text
 d:\opticnn
-├── 01_physics_foundations/              # 第一阶段: 光学物理第一性原理
-│   ├── step2_mzi_hello_world.py        # Step 2: 2x2 MZI 干涉与连续三角函数矩阵乘法
-│   ├── step2_mzi_plot.py               # Step 2 可视化: 生成干涉曲线图 (mzi_interference.png)
-│   ├── step2_neuroptica_demo.py        # Stanford neuroptica Clements 拓扑网格演示
-│   └── step3_optoelectronic_bottleneck.py # Step 3: 光电转换断点 (O/E -> Softmax -> E/O 损耗审计)
+├── 01_physics_foundations/              # Stage 1: Optical physics first principles
+│   ├── step2_mzi_hello_world.py        # Step 2: 2x2 MZI interference and matrix multiplication
+│   ├── step2_mzi_plot.py               # Step 2 Visualization: Plot interference curves (mzi_interference.png)
+│   ├── step2_neuroptica_demo.py        # Clements topology mesh demo using neuroptica
+│   └── step3_optoelectronic_bottleneck.py # Step 3: O/E -> Softmax -> E/O conversion loss audit
 │
-├── 02_polarization_gates/               # 第二阶段: 偏振门与全光原生网络
-│   ├── optics_engine.py                # 包含 4 大物理属性 (波长/强度/相位/偏振) 的底层引擎
-│   ├── experiment_polarization_softmax.py # 偏振门物理特性实测 (WDM / Fresnel-Arago / 偏振Softmax)
-│   └── step4_optical_native_network.py # 抛弃Softmax! 全光原生激活 (sin^4/sin^2) 螺旋分类实测 (99.4% 准确率)
+├── 02_polarization_gates/               # Stage 2: Polarization gates and optical native networks
+│   ├── optics_engine.py                # Core engine with 4 physical properties (wavelength, intensity, phase, polarization)
+│   ├── experiment_polarization_softmax.py # Physical tests (WDM, Fresnel-Arago, polarization Softmax)
+│   └── step4_optical_native_network.py # Native optical activation (sin^4/sin^2) spiral classification (99.4% accuracy)
 │
-├── 03_optical_nanogpt/                  # 第三阶段: 全光 Native NanoGPT 大语言模型
-│   ├── model.py                        # 全光 CausalSelfAttention (sin^4 偏振门 + 可学习光学旋钮) & 物理审计函数
-│   ├── train_shakespeare.py            # Stage 1: 字符级莎士比亚语言建模 (验证梯度传播与生成能力)
-│   ├── train_toy_math.py               # Stage 2: 玩具级算术加法 (验证数据路由 Data Routing 与胜者通吃)
+├── 03_optical_nanogpt/                  # Stage 3: All-optical Native NanoGPT language model
+│   ├── model.py                        # Optical CausalSelfAttention (sin^4 gate, SA, SOA) & physical audit
+│   ├── train_shakespeare.py            # Stage 1: Character-level Shakespeare language modeling
+│   ├── train_toy_math.py               # Stage 2: Toy math addition (data routing and winner-take-all)
 │   └── data/
-│       ├── prepare_shakespeare.py      # TinyShakespeare 数据加载与切分
-│       └── prepare_toy_math.py         # 加法算术样本生成
+│       ├── prepare_shakespeare.py      # TinyShakespeare dataset downloader and split
+│       └── prepare_toy_math.py         # Addition dataset generator
 │
-├── .gitignore                          # Git 忽略配置
-├── requirements.txt                    # 依赖清单 (含 PyTorch CUDA)
-└── README.md                           # 本文档
+├── .gitignore                          # Git ignore configuration
+├── requirements.txt                    # Python dependencies (with PyTorch CUDA)
+└── README.md                           # This document
 ```
 
 ---
 
-## 🔬 全流程“光 vs 电”物理可实现性严格审计 (Zero-Fluff Physics Audit)
+## 🔬 Physical Fidelity Audit: Optics vs Electronics
 
-在探讨“光子计算”时，绝不能用软件里的算子偷换概念。以下是整个 NanoGPT 计算流中，**哪些真正能在波导和空间光场中以光速完成，哪些是软件偷用了数字电学芯片**：
+When studying optical computing, we must clearly separate what happens optically from what uses digital electronics:
 
-| 计算环节 | 数学表达式 | 物理光学实现载体 | 真实物理属性判定 | 物理机理与工程现状 |
+| Step in Pipeline | Formula | Physical Carrier | Implementation Type | Engineering Reality |
 | :--- | :--- | :--- | :--- | :--- |
-| **Q, K, V 投影矩阵** | $x W_q, x W_k, x W_v$ | Clements / Reck 硅光 MZI 网格 | 🟢 **纯光学 (皮秒级)** | 无源相干干涉，光穿过波导即完成连续复数酉矩阵乘法 |
-| **注意力打分点积** | $Q K^T$ | 空间光衍射 (Diffractive) / 波导网格 | 🟢 **纯光学 (光速)** | 多光束相干叠加，天然实现内积求和 |
-| **自回归因果遮罩 (Mask)** | `masked_fill(0.0)` | 空间空间光阑 / 不透明吸光微结构 | 🟢 **纯光学 (物理阻断)** | 透射率精确为 0，不需要算力，光被物理吸收或全反射 |
-| **注意力激活非线性** | $\sin^4(\theta)$ | 双折射级联偏振滤光片 (Lyot 门) | 🟢 **纯光学 (Lyot 偏振门)** | 马吕斯定律二次方级联透射，连续且天然超线性 |
-| **Value 加权汇聚** | $\text{Att} \cdot V$ | 多波导干涉叠加汇聚 | 🟢 **纯光学 (天然叠加)** | 光子波包线性叠加，零延迟无能耗 |
-| **残差跳连相加** | $x + \text{Attn}(x)$ | 3dB 定向耦合器 (Directional Coupler) | 🟢 **纯光学 (无源器件)** | 纯无源两束光波干涉合束 |
-| **注意力归一化** (被动模式) | $A \times \frac{1}{\sqrt{T}}$ | 1×T 无源分束器衰减 | 🟢 **纯光学 (零计算开销)** | 无任何除法计算，纯靠光波在分束器中的天然分流衰减 |
-| **注意力归一化** (动态模式) | $\frac{A}{\sum A}$ | 软件浮点除法器 (ALU) | 🔴 **数字电子运算 (隐蔽瓶颈)** | 必须探得全序列瞬时总光强并用数字除法器计算，无法全光纯被动单芯片完成 |
-| **LayerNorm 归一化** | $\frac{x - \mu}{\sigma} \gamma + \beta$ | 数字 DSP 均值方差处理器 | 🔴 **数字电子运算 (隐蔽瓶颈)** | 全局统计均值与方差需要高精度电子寄存器；全光直通模式下需彻底移除 |
-| **传统 MLP 激活** | $\text{GELU}(z), \text{ReLU}(z)$ | 电子 ALU 逻辑单元 | 🔴 **数字电子运算 (隐蔽瓶颈)** | 纯光学模式下已完全替换为可学习 $\sin^4$ 偏振透射门或可饱和吸收体 |
-| **Token 词表嵌入** | $\text{Embedding}(idx)$ | 激光器阵列 (Laser Diode) + E/O 调制 | 🟡 **边界光电调制 (E/O)** | 将离散文字编码注入到激光光强与相位中 |
-| **最终输出解码** | $\text{Argmax}(\text{detectors})$ | 光电探测器阵列 (PD) + ADC 读出 | 🟡 **边界光电探测 (O/E)** | 光强转光生电流，取最大电流通道作为预测 Token |
+| **Q, K, V Projections** | $x W_q, x W_k, x W_v$ | Clements / Reck silicon MZI mesh | 🟢 **Pure Optical (picoseconds)** | Passive coherent interference; light passing through waveguides computes unitary matrix multiplication |
+| **Attention Dot Product** | $Q K^T$ | Free-space diffraction / waveguide mesh | 🟢 **Pure Optical (speed of light)** | Coherent superposition naturally computes the inner product |
+| **Causal Attention Mask** | `masked_fill(0.0)` | Spatial aperture / opaque absorber | 🟢 **Pure Optical (physical blocking)** | Transmission is exactly 0; light is physically absorbed or reflected |
+| **Attention Activation** | $\sin^4(\theta)$ | Birefringent Lyot polarization filter | 🟢 **Pure Optical (Lyot filter)** | Squared Malus law transmission; continuous and super-linear |
+| **Value Aggregation** | $\text{Att} \cdot V$ | Multi-waveguide interference | 🟢 **Pure Optical (passive sum)** | Photons add linearly with zero delay and zero energy |
+| **Residual Connection** | $x + \text{Attn}(x)$ | 3dB directional coupler | 🟢 **Pure Optical (passive device)** | Passive interference combines two optical beams |
+| **Attention Normalization** (Passive) | $A \times \frac{1}{\sqrt{T}}$ | 1×T passive beam splitter | 🟢 **Pure Optical (zero computation)** | Natural beam splitting attenuation without any division operation |
+| **Attention Normalization** (Dynamic) | $\frac{A}{\sum A}$ | Digital floating-point ALU | 🔴 **Digital Electronics (bottleneck)** | Requires measuring total beam power and computing division on a digital chip |
+| **LayerNorm** | $\frac{x - \mu}{\sigma} \gamma + \beta$ | Digital DSP mean/variance unit | 🔴 **Digital Electronics (bottleneck)** | Calculating global mean and variance requires digital registers; removed in pure optical mode |
+| **MLP Activation** | $\text{GELU}(z), \text{ReLU}(z)$ | Electronic ALU | 🔴 **Digital Electronics (bottleneck)** | Replaced with learnable $\sin^4$ polarization gates or saturable absorbers in optical mode |
+| **Token Embedding** | $\text{Embedding}(idx)$ | Laser diode array + E/O modulator | 🟡 **Optoelectronic Boundary (E/O)** | Modulates discrete token IDs onto laser intensity and phase |
+| **Output Decoding** | $\text{Argmax}(\text{detectors})$ | Photodetector array (PD) + ADC readout | 🟡 **Optoelectronic Boundary (O/E)** | Converts light intensity to current; picks the highest current channel as the predicted token |
 
 ---
 
-## ⚡ CUDA 硬件加速实测 (RTX 4070 Laptop GPU)
+## ⚡ CUDA Acceleration (RTX 4070 Laptop GPU)
 
-通过配置 `torch==2.6.0+cu124`，所有模型训练均在本地 **NVIDIA GeForce RTX 4070 Laptop GPU** 上全速运行：
-* **加速比**：从 CPU 的 78.9 秒缩短至 **9.8 秒**，训练速度提升 **~8 倍**！
-* **显存与功耗**：显存占用极低（< 500 MB），毫秒级完成单步前向传播与反向梯度更新。
+With `torch==2.6.0+cu124`, training runs on an **NVIDIA GeForce RTX 4070 Laptop GPU**:
+* **Speedup**: From 78.9 seconds on CPU down to **9.8 seconds** on GPU (~8x faster).
+* **VRAM**: Low memory footprint (< 500 MB), fast forward passes and gradient updates.
 
 ---
 
-## 🚀 运行实验
+## 🚀 Running Experiments
 
-在激活 `.venv` 虚拟环境后执行：
+Activate your virtual environment and run:
 
-### 1. Stage 1: 字符级莎士比亚语言建模 (TinyShakespeare)
+### 1. Stage 1: Character-level Shakespeare (TinyShakespeare)
 ```bash
-# 纯光学模式 (关闭 LayerNorm，关闭除法归一化，全光偏振 MLP)
-# 支持耐性早停 (--patience 4) 与目标损失停机 (--target-loss 2.5)
+# Pure optical mode (no LayerNorm, passive 1/sqrt(T) attenuation, optical sin^4 MLP)
 python 03_optical_nanogpt/train_shakespeare.py --pure-optical --iters 1000 --eval-interval 100 --patience 4 --device cuda
 
-# 或电子辅助归一化模式 (带 LayerNorm 与光束归一化)
+# Hybrid mode (with LayerNorm and beam sum normalization)
 python 03_optical_nanogpt/train_shakespeare.py --with-layernorm --iters 1000 --device cuda
 ```
-* **实验表现**：纯光学模式下仅用 9.8 秒即完成 800 步训练，Loss 迅速从 4.18 下降至 2.51。
-* **生成效果**：初始纯乱码，训练后模型学会了英文单词拼写、空格断句、双换行排版与莎士比亚戏剧人物台词格式（`ROMEO:\nTh t t wrd is s ble winouthar thine...`）。
-* **物理结论**：**证明 $\sin^4(\theta)$ 偏振门成功在多层光波导网络中传播了语言建模的反向梯度！**
+* **Performance**: In pure optical mode, 800 iterations complete in ~9.8s; Loss drops from 4.18 to 2.51.
+* **Text Output**: Learns word boundaries, spacing, and play dialogue format (`ROMEO:\nTh t t wrd is s ble winouthar thine...`).
+* **Conclusion**: **Shows that $\sin^4(\theta)$ polarization gates can backpropagate gradients for language modeling through optical layers.**
 
-### 2. Stage 2: 玩具级算术加法数据路由 (Toy Math Addition)
+### 2. Stage 2: Toy Math Addition (Data Routing)
 ```bash
-# 带光功率自适应控制 (AGC / 光分束归一化) 模式: 验证精准数据路由与胜者通吃
-# 支持目标准确率停机 (--target-acc 85.0) 与耐性早停 (--patience 4)
+# Hybrid mode with Automatic Gain Control (AGC / beam sum normalization)
 python 03_optical_nanogpt/train_toy_math.py --iters 1500 --eval-interval 150 --patience 4 --target-acc 85.0 --device cuda
 
-# 纯被动衰减模式 (无增益放大器，展示多级无源级联的功率衰减物理挑战)
+# Pure passive mode (no electronic normalization; tests passive beam attenuation)
 python 03_optical_nanogpt/train_toy_math.py --pure-optical --iters 1200 --device cuda
 ```
-* **实验表现**：
-  * **在光功率自适应控制 (AGC) 模式下**：仅 14 秒即完成 1200 步训练，测试集加法准确率达到 **66%~85%**！`7+7=14`、`2+5=07`、`16+22=038` 全部 100% 精准算对。
-  * **在纯被动级联模式下**：因多级无源器件 $\sin^4(u)$ 导数在零点附近为 $O(u^3)$，出现光衰减与梯度弥散，指明了在真实光学芯片工程中引入**半导体光放大器 (SOA, Semiconductor Optical Amplifier)** 的必要性。
-* **物理结论**：**证明 $\sin^4(\theta)$ 的超线性响应完美实现了对目标数字 Token 的高保真数据路由（胜者通吃）！**
+* **Performance**:
+  * **Hybrid AGC mode**: Reaches **76% to 85%** accuracy on unseen test addition problems (`7+7=14`, `2+5=07`, `16+22=038` are predicted correctly).
+  * **Pure passive mode**: Without normalization or gain, power decays across layers. This highlights the practical need for **Semiconductor Optical Amplifiers (SOA)** or **Saturable Absorbers (SA)** in deep optical chips.
+* **Conclusion**: **Super-linear $\sin^4(\theta)$ response routes attention to target number tokens (winner-take-all behavior).**
 
 ---
 
-## 🛑 三重智能停止机制 (Three-Tier Stopping Criteria)
+## 🛑 Three-Tier Stopping Strategy
 
-为杜绝死循环空跑与后期过拟合，代码实现了标准的工业级三层联合停机策略：
-1. **Target Stop (目标达成即停)**：
-   * **加法任务**：当实时测试集推理准确率 $\ge \text{target\_acc}$（如 85% 或 95%）时，证明注意力路由已学通，立即提前终止！
-   * **语言建模**：当验证集损失 $\le \text{target\_loss}$ 时，提前达成目标收工。
-2. **Patience Early Stop (耐性早停防过拟合)**：
-   * 监控验证集 Loss。如果连续 `patience` 次评估没有出现显著改善（改善幅度小于 `min_delta`），自动刹车并中断训练。
-   * **自动回滚最佳权重**：无论在第几步触发早停，系统都会自动恢复历史最优 Checkpoint，确保测试和生成的永远是模型巅峰状态。
-3. **Max Iterations (硬截断兜底)**：
-   * 设置最大步数限制（如 1000 步或 1500 步），防止无限制等待。
+To avoid unnecessary training steps and prevent overfitting:
+1. **Target Stop**:
+   * **Math task**: Stops when test accuracy reaches `target_acc` (e.g. 85.0%).
+   * **Language task**: Stops when validation loss reaches `target_loss`.
+2. **Patience Early Stop**:
+   * Monitors validation loss. If there is no improvement over `patience` evaluation checks, training stops automatically.
+   * **Automatic Best Weights Restore**: The best historical checkpoint is restored when training ends.
+3. **Max Iterations**:
+   * Fixed upper bound on total iterations to prevent infinite loops.
