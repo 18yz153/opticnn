@@ -1,7 +1,7 @@
 # OptiCNN Architecture Comparison: Electronic vs Pure Optical vs Optoelectronic Hybrid (AGC)
 
 > **Context**: Optical computing is often seen as a promising path to overcome power and memory walls in AI chips. But in Transformer models, can optics completely replace electronics? Or is a hybrid approach required?  
-> **Benchmark**: Using an **NVIDIA GeForce RTX 4070 Laptop GPU**, we evaluate three architectures on **Stage 1 (Character-level Shakespeare)** and **Stage 2 (Toy Math Addition Routing)** under realistic physical assumptions.
+> **Benchmark**: Using CUDA GPU acceleration, we evaluate three architectures on **Stage 1 (Character-level Shakespeare)** and **Stage 2 (Toy Math Addition Routing)** under realistic physical assumptions.
 
 ---
 

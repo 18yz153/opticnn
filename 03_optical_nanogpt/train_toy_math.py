@@ -56,8 +56,6 @@ def train_toy_math(attn_type='optical', pure_optical=False, max_iters=1500,
     print("=" * 80)
     print(f"   🧮 Stage 2: Toy Math Addition Routing Test (Attention: {attn_type.upper()}) 🧮")
     print(f"   Hardware Device: {device.upper()}")
-    if device == 'cuda':
-        print(f"   GPU Model: {torch.cuda.get_device_name(0)}")
     print(f"   Stop Strategy: MaxIters={max_iters} | Patience={patience} | MinDelta={min_delta} | TargetAcc={target_acc}%")
     print("=" * 80)
 

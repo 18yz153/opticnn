@@ -1,7 +1,7 @@
 # Report: Saturable Absorbers (SA) & Semiconductor Optical Amplifiers (SOA) vs Electronic Baseline
 
 > **Context**: In initial experiments, the birefringent polarization gate $\sin^4(\theta)$ showed a cubic derivative vanishing issue ($4x^3$ gradient dead zone) and required electronic division for normalization.  
-> **Investigation**: We implement two physical optical mechanisms—**Saturable Absorber (SA)** and **Semiconductor Optical Amplifier (SOA)**—as differentiable forward operators, and benchmark them against electronic Softmax and polarization gates on an **NVIDIA GeForce RTX 4070 Laptop GPU**.
+> **Investigation**: We implement two physical optical mechanisms—**Saturable Absorber (SA)** and **Semiconductor Optical Amplifier (SOA)**—as differentiable forward operators, and benchmark them against electronic Softmax and polarization gates with CUDA GPU acceleration.
 
 ---
 
@@ -18,7 +18,7 @@
 
 ## 📊 2. Benchmark Comparison (Shakespeare vs Toy Math)
 
-Under controlled hardware conditions (RTX 4070 Laptop GPU, PyTorch 2.6.0+cu124):
+Under controlled hardware conditions (CUDA GPU acceleration, PyTorch):
 
 ### 1. Stage 1: Character-level Shakespeare (TinyShakespeare)
 

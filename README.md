@@ -56,11 +56,12 @@ When studying optical computing, we must clearly separate what happens optically
 
 ---
 
-## ⚡ CUDA Acceleration (RTX 4070 Laptop GPU)
+## 🛠️ Simulation Setup
 
-With `torch==2.6.0+cu124`, training runs on an **NVIDIA GeForce RTX 4070 Laptop GPU**:
-* **Speedup**: From 78.9 seconds on CPU down to **9.8 seconds** on GPU (~8x faster).
-* **VRAM**: Low memory footprint (< 500 MB), fast forward passes and gradient updates.
+Simulation runs via PyTorch with standard GPU acceleration for fast experimentation:
+```bash
+pip install -r requirements.txt
+```
 
 ---
 
